@@ -1,5 +1,18 @@
 const EPHEMERAL = 1 << 6;
 
+export const TIME_REASONS = [
+  { label: "話題を変えたい", value: "change_topic" },
+  { label: "一言だけ挟みたい（退席・連絡など）", value: "brief_interruption" },
+  { label: "ペースを落としてほしい", value: "slow_down" },
+  { label: "他の人に振ってほしい", value: "pass_to_others" },
+  { label: "時間を気にしてほしい", value: "watch_time" },
+  { label: "理由は言わない", value: "no_reason" },
+] as const;
+
+export function timeReasonLabel(value?: string): string | null {
+  return TIME_REASONS.find((reason) => reason.value === value)?.label ?? null;
+}
+
 export function jsonResponse(
   payload: Record<string, unknown>,
   status = 200,
@@ -24,6 +37,31 @@ export function deferredEphemeral(): Response {
   });
 }
 
+export function timeReasonMenu(): Response {
+  return jsonResponse({
+    type: 4,
+    data: {
+      content: "匿名で通告する理由カテゴリを1つ選んでください。",
+      flags: EPHEMERAL,
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 3,
+              custom_id: "time:reason",
+              placeholder: "理由カテゴリを選択",
+              min_values: 1,
+              max_values: 1,
+              options: TIME_REASONS,
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
 export function safetyCardMessage(): Record<string, unknown> {
   return {
     type: 4,
@@ -32,7 +70,7 @@ export function safetyCardMessage(): Record<string, unknown> {
         {
           title: "セーフティカード",
           description:
-            "**△ イエローカード**: 内容や進行に注意してほしいときに使用します。匿名の注意だけを投稿します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\nどちらも押した人の名前は表示・保存されません。",
+            "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\nどちらも押した人の名前は表示・保存されません。",
           color: 0xd83c3e,
         },
       ],
@@ -43,9 +81,9 @@ export function safetyCardMessage(): Record<string, unknown> {
             {
               type: 2,
               style: 1,
-              custom_id: "yellowcard:post",
-              label: "イエローカード",
-              emoji: { name: "△" },
+              custom_id: "time:choose",
+              label: "タイム",
+              emoji: { name: "⏱️" },
             },
             {
               type: 2,

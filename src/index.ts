@@ -11,6 +11,8 @@ import {
   ephemeralMessage,
   jsonResponse,
   safetyCardMessage,
+  timeReasonLabel,
+  timeReasonMenu,
 } from "./responses";
 import { verifyDiscordRequest } from "./security";
 import type { DiscordInteraction, Env, MuteResult } from "./types";
@@ -168,9 +170,10 @@ async function activateXCard(
   }
 }
 
-async function postYellowCard(
+async function postTime(
   env: Env,
   interaction: DiscordInteraction,
+  reason: string,
 ): Promise<void> {
   const channelId = interaction.channel_id;
   if (!channelId) {
@@ -185,9 +188,8 @@ async function postYellowCard(
   const sent = await sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
     embeds: [
       {
-        title: "△ イエローカード",
-        description:
-          "内容や進行に注意してほしいという匿名の合図がありました。必要に応じて確認や調整をしてください。",
+        title: "⏱ タイム",
+        description: reason,
         color: 0xfee75c,
         timestamp: new Date().toISOString(),
       },
@@ -196,14 +198,14 @@ async function postYellowCard(
   });
 
   if (!sent) {
-    console.error("Yellow-card post failed");
+    console.error("Time post failed");
   }
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
     sent
-      ? "イエローカードを匿名で投稿しました。あなたの名前は記録されていません。"
-      : "イエローカードの投稿に失敗しました。管理者に連絡してください。",
+      ? "タイムを匿名で投稿しました。あなたの名前は記録されていません。"
+      : "タイムの投稿に失敗しました。管理者に連絡してください。",
   );
 }
 
@@ -237,9 +239,21 @@ async function handleInteraction(
 
   if (
     interaction.type === MESSAGE_COMPONENT &&
-    interaction.data?.custom_id === "yellowcard:post"
+    (interaction.data?.custom_id === "time:choose" ||
+      interaction.data?.custom_id === "yellowcard:post")
   ) {
-    context.waitUntil(postYellowCard(env, interaction));
+    return timeReasonMenu();
+  }
+
+  if (
+    interaction.type === MESSAGE_COMPONENT &&
+    interaction.data?.custom_id === "time:reason"
+  ) {
+    const reason = timeReasonLabel(interaction.data.values?.[0]);
+    if (!reason) {
+      return ephemeralMessage("理由カテゴリを選び直してください。");
+    }
+    context.waitUntil(postTime(env, interaction, reason));
     return deferredEphemeral();
   }
 
