@@ -1,17 +1,9 @@
 name = "discord-x-card"
 main = "src/index.ts"
 compatibility_date = "2026-07-28"
+# Dashboardで設定したランタイム変数とSecretsを、Git連携の再デプロイ時にも保持する。
+keep_vars = true
 
 [observability]
 enabled = true
 head_sampling_rate = 1
-
-[vars]
-# Botを導入したDiscordアプリケーションのID
-DISCORD_APPLICATION_ID = "REPLACE_ME"
-# 管理者とBotだけが閲覧できるログチャンネルのID
-LOG_CHANNEL_ID = "REPLACE_ME"
-# 知人サーバー向けの安全上限。Discord REST呼び出し数を無料枠内に抑える。
-MAX_VC_MEMBERS = "40"
-# 0で無効。1〜10秒を指定可能。
-X_CARD_AUTO_UNMUTE_SECONDS = "5"
