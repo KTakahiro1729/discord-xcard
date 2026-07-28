@@ -4,8 +4,17 @@ import {
   registerSetupCommand,
   snapshotForUser,
 } from "../src/discord";
+import {
+  X_CARD_DELAY_MAX_MS,
+  X_CARD_DELAY_MIN_MS,
+  randomXCardDelayMs,
+} from "../src/config";
 import { canSetUpCard } from "../src/index";
-import { safetyCardMessage } from "../src/responses";
+import {
+  safetyCardMessage,
+  timeReasonLabel,
+  timeReasonMenu,
+} from "../src/responses";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -78,7 +87,12 @@ describe("configuration", () => {
     expect(maxVcMembers({ MAX_VC_MEMBERS: "invalid" } as never)).toBe(40);
   });
 
-  it("creates persistent yellow-card and X-card buttons", () => {
+  it("keeps the X-card delay within the configured random range", () => {
+    expect(randomXCardDelayMs(() => 0)).toBe(X_CARD_DELAY_MIN_MS);
+    expect(randomXCardDelayMs(() => 0.999999)).toBe(X_CARD_DELAY_MAX_MS);
+  });
+
+  it("creates persistent Time and X-card buttons", () => {
     const response = safetyCardMessage() as {
       data: {
         components: Array<{
@@ -87,12 +101,51 @@ describe("configuration", () => {
       };
     };
     expect(response.data.components[0]?.components[0]).toMatchObject({
-      custom_id: "yellowcard:post",
+      custom_id: "time:choose",
       style: 1,
     });
     expect(response.data.components[0]?.components[1]).toMatchObject({
       custom_id: "xcard:activate",
       style: 4,
     });
+  });
+
+  it("offers the configured anonymous Time categories", async () => {
+    const response = await timeReasonMenu().json() as {
+      data: {
+        flags: number;
+        components: Array<{
+          components: Array<{
+            custom_id: string;
+            options: Array<{ label: string; value: string }>;
+          }>;
+        }>;
+      };
+    };
+
+    expect(response.data.flags).toBe(64);
+    expect(response.data.components[0]?.components[0]).toMatchObject({
+      custom_id: "time:reason",
+      options: [
+        { label: "話題を変えたい", value: "change_topic" },
+        {
+          label: "一言だけ挟みたい（退席・連絡など）",
+          value: "brief_interruption",
+        },
+        { label: "ペースを落としてほしい", value: "slow_down" },
+        { label: "他の人に振ってほしい", value: "pass_to_others" },
+        { label: "時間を気にしてほしい", value: "watch_time" },
+        {
+          label: "言い方を柔らかくしてほしい",
+          value: "soften_wording",
+        },
+        { label: "理由は言わない", value: "no_reason" },
+      ],
+    });
+    expect(timeReasonLabel("watch_time")).toBe("時間を気にしてほしい");
+    expect(timeReasonLabel("soften_wording")).toBe(
+      "言い方を柔らかくしてほしい",
+    );
+    expect(timeReasonLabel("unknown")).toBeNull();
   });
 });

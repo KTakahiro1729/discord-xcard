@@ -27,6 +27,7 @@ export interface DiscordInteraction {
     name?: string;
     custom_id?: string;
     component_type?: number;
+    values?: string[];
   };
 }
 
