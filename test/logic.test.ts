@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { maxVcMembers, snapshotForUser } from "../src/discord";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  maxVcMembers,
+  registerSetupCommand,
+  snapshotForUser,
+} from "../src/discord";
 import { canSetUpCard } from "../src/index";
 import { safetyCardMessage } from "../src/responses";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("voice snapshot", () => {
   it("finds the actor's channel and every participant", () => {
@@ -37,6 +45,29 @@ describe("setup permissions", () => {
     expect(canSetUpCard(undefined)).toBe(false);
     expect(canSetUpCard("0")).toBe(false);
     expect(canSetUpCard("invalid")).toBe(false);
+  });
+});
+
+describe("command registration", () => {
+  it("registers the setup command globally with Manage Guild permission", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    await expect(
+      registerSetupCommand({
+        DISCORD_APPLICATION_ID: "application",
+        DISCORD_BOT_TOKEN: "token",
+      } as never),
+    ).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://discord.com/api/v10/applications/application/commands",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"default_member_permissions":"32"'),
+      }),
+    );
   });
 });
 

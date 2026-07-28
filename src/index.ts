@@ -3,6 +3,7 @@ import {
   fetchVoiceSnapshot,
   maxVcMembers,
   muteMembers,
+  registerSetupCommand,
   sendChannelMessage,
 } from "./discord";
 import {
@@ -212,6 +213,15 @@ async function handleInteraction(
   context: ExecutionContext,
 ): Promise<Response> {
   if (interaction.type === INTERACTION_PING) {
+    context.waitUntil(
+      registerSetupCommand(env)
+        .then((registered) => {
+          if (!registered) console.error("Setup command registration failed");
+        })
+        .catch(() => {
+          console.error("Setup command registration failed");
+        }),
+    );
     return jsonResponse({ type: 1 });
   }
 
