@@ -1,6 +1,6 @@
 # Discord 匿名セーフティカード
 
-Discord のボイスチャットで使える、匿名のタイム／Xカードです。Cloudflare Workers または Cloudflare Pages 上で動作します。
+Discord のボイスチャットで使える、匿名のタイム／Xカードです。Cloudflare Workers 上で動作します。
 
 - **⏱ タイム** — 選択した理由カテゴリだけを、匿名で知らせます
 - **✕ Xカード** — 会話をすぐに止めたいとき、同じVCにいる全員をサーバーミュートします
@@ -39,6 +39,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 ## 導入に必要なもの
 
 - Cloudflareアカウント
+- GitHubアカウントと、このリポジトリへのアクセス権
 - Discordサーバーの管理権限
 - 以下の権限を持つDiscord Bot
   - チャンネルを見る
@@ -52,7 +53,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 ## かんたんセットアップ
 
-コマンド入力やプログラムの編集は必要ありません。配布ZIPをCloudflare Pagesへアップロードし、5つの設定値を入力します。
+コマンド入力やプログラムの編集は必要ありません。GitHubリポジトリをCloudflareへ接続し、設定値を入力します。以後は `main` ブランチの更新が自動デプロイされます。
 
 ### 1. Discordアプリを作成する
 
@@ -77,19 +78,33 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 チャンネルIDは、Discordの開発者モードを有効にすると右クリックメニューからコピーできます。
 
-### 3. Cloudflare Pagesへデプロイする
+### 3. GitHubリポジトリをCloudflareへ接続する
 
-1. [`discord-x-card-pages.zip` をダウンロード](https://github.com/KTakahiro1729/discord-xcard/releases/download/easy-install/discord-x-card-pages.zip)する
-2. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
-3. `Workers & Pages` → `Create application` → `Pages` → `Upload assets` を選ぶ
-4. プロジェクト名（例: `discord-x-card`）を入力する
-5. ZIPを展開せずにアップロードし、`Deploy site` を押す
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
+2. `Workers & Pages` → `Create application` を選ぶ
+3. `Import a repository` の `Get started` を選ぶ
+4. GitHubを接続し、`KTakahiro1729/discord-xcard` を選ぶ
+5. 次のビルド設定を確認する
 
-配布ZIPには、Pagesの高度なモードで動作する `_worker.js` が含まれています。ZIPはGitHub Actionsによって `main` の更新ごとにテスト・再生成されるため、ソースコードから手作業でビルドする必要はありません。
+| 項目 | 設定値 |
+|---|---|
+| Project name | `discord-x-card` |
+| Production branch | `main` |
+| Build command | 空欄 |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | 空欄 |
+
+6. `Save and Deploy` を押す
+7. デプロイ完了後、表示された `workers.dev` のURLを控える
+
+> [!IMPORTANT]
+> Cloudflare上のWorker名は `discord-x-card` にしてください。`wrangler.toml` の名前と異なる場合、Git連携のビルドは失敗します。
+>
+> Git連携には対象リポジトリへのアクセス権が必要です。第三者へ配布する場合は、このリポジトリを公開するか、利用者自身がアクセス可能なコピーを用意する必要があります。
 
 ### 4. 環境変数を設定する
 
-作成したPagesプロジェクトで `Settings` → `Variables and Secrets` を開き、Production環境に必須の5項目を追加します。自動解除時間は任意で追加できます。
+作成したWorkerで `Settings` → `Variables & Secrets` を開き、Production環境に必須の5項目を追加します。自動解除時間は任意で追加できます。ビルド時の変数ではなく、Workerのランタイム変数として設定してください。
 
 | 名前 | 種類 | 値 |
 |---|---|---|
@@ -103,13 +118,13 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 > [!CAUTION]
 > Public KeyとBot Tokenは第三者へ送らず、READMEやチャットにも貼らないでください。
 
-保存後、`Deployments` から同じZIPをもう一度アップロードし、設定を反映します。
+保存後、WorkerのURLをもう一度開き、正常に応答することを確認します。今後 `main` が更新されると、Cloudflare Workers Buildsが自動的にビルドとデプロイを行います。
 
 ### 5. Discordと接続する
 
 1. Cloudflareの `Deployments` に表示されたURLを開く
 2. `Discord X-card Worker is running.` と表示されることを確認する
-3. URL（例: `https://discord-x-card.pages.dev/`）をコピーする
+3. URL（例: `https://discord-x-card.<アカウント名>.workers.dev/`）をコピーする
 4. Discord Developer Portalで対象のApplicationを開く
 5. `General Information` → `Interactions Endpoint URL` にURLを貼り、保存する
 
@@ -185,7 +200,7 @@ Cloudflare Workersへソースコードから直接デプロイする場合は�
 npm install
 ```
 
-`wrangler.toml` の `DISCORD_APPLICATION_ID` と `LOG_CHANNEL_ID` を実際の値へ変更し、秘密情報を登録します。
+ランタイム変数はCloudflare DashboardまたはWranglerで設定します。`wrangler.toml` にBot Tokenなどの実値を書き込まないでください。秘密情報をWranglerで登録する場合は次を実行します。
 
 ```bash
 npx wrangler secret put DISCORD_PUBLIC_KEY
@@ -221,7 +236,7 @@ Xカードのランダム遅延も同じファイルで変更できます。
 
 自動解除はCloudflareの環境変数 `X_CARD_AUTO_UNMUTE_SECONDS` で変更します。コードの再ビルドは不要です。
 
-`main`へ反映すると、GitHub Actionsが変更を含む配布ZIPを自動生成します。
+`main`へ反映すると、接続済みのCloudflare Workers Buildsが変更を自動デプロイします。GitHub Actionsは型チェック、テスト、デプロイ可能性の検証だけを行います。
 
 ### ローカル開発
 
