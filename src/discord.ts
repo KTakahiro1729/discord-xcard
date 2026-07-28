@@ -13,6 +13,27 @@ const DISCORD_GATEWAY =
 const GATEWAY_INTENTS = (1 << 0) | (1 << 7); // GUILDS | GUILD_VOICE_STATES
 const GATEWAY_TIMEOUT_MS = 15_000;
 
+export async function registerSetupCommand(env: Env): Promise<boolean> {
+  const response = await discordApi(
+    env.DISCORD_BOT_TOKEN,
+    `/applications/${env.DISCORD_APPLICATION_ID}/commands`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: "xcard-setup",
+        description: "このチャンネルに匿名セーフティカードを設置します",
+        type: 1,
+        dm_permission: false,
+        default_member_permissions: "32",
+      }),
+    },
+  );
+
+  const registered = response.ok;
+  await response.body?.cancel();
+  return registered;
+}
+
 export function snapshotForUser(
   voiceStates: VoiceState[],
   userId: string,
