@@ -21,7 +21,6 @@ Cloudflare Workers上で動作する、知人Discordサーバー向けの匿名�
 
 ## 前提
 
-- Node.js 22以上
 - Cloudflareアカウント
 - Discordサーバーの管理権限
 - Discord Botに以下の権限
@@ -33,7 +32,11 @@ Cloudflare Workers上で動作する、知人Discordサーバー向けの匿名�
 
 Botロールを、ミュート対象になる通常ロールより上に配置してください。
 
-## 1. Discordアプリを作成
+## かんたんセットアップ
+
+普段IT作業をしない人向けの手順です。コマンド入力やプログラムの編集は不要で、同梱のZIPをCloudflareへアップロードして5項目を設定します。
+
+### 1. Discordアプリを作成
 
 1. Discord Developer PortalでApplicationを作成
 2. BotページでBotを作成
@@ -46,66 +49,84 @@ Botロールを、ミュート対象になる通常ロールより上に配置�
 
 `GUILD_VOICE_STATES` は非特権Intentなので、Developer Portalで特別な有効化は不要です。
 
-## 2. ログチャンネルを作成
+### 2. ログチャンネルを作成
 
 `#x-card-log` などのテキストチャンネルを作り、通常メンバーの「チャンネルを見る」を拒否します。Botと管理者には閲覧・送信を許可します。
 
 チャンネルIDをコピーしてください。Discordで開発者モードを有効にすると、右クリックからIDをコピーできます。
 
-## 3. インストール
+### 3. CloudflareへZIPをアップロード
+
+1. [`discord-x-card-pages.zip` をダウンロード](https://github.com/KTakahiro1729/discord-xcard/releases/download/easy-install/discord-x-card-pages.zip)する
+2. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
+3. `Workers & Pages` → `Create application` → `Pages` → `Upload assets` を選ぶ
+4. プロジェクト名（例: `discord-x-card`）を入力する
+5. ダウンロードしたZIPをそのままアップロードして、`Deploy site` を押す
+
+このZIPには、Pagesの高度なモードで動く `_worker.js` が入っています。展開や編集は不要です。
+
+配布ZIPはGitHub Actionsが `main` の更新ごとにテスト・再生成します。ソースコードから手作業で作る必要はありません。
+
+### 4. Cloudflareの設定画面へ5項目を入力
+
+作成したPagesプロジェクトで `Settings` → `Variables and Secrets` を開き、Production環境へ次の項目を追加します。
+
+| 名前 | 種類 | 入力する値 |
+|---|---|---|
+| `DISCORD_APPLICATION_ID` | Text | DiscordのApplication ID |
+| `LOG_CHANNEL_ID` | Text | 手順2で作ったログチャンネルのID |
+| `MAX_VC_MEMBERS` | Text | `40` |
+| `DISCORD_PUBLIC_KEY` | Secret | DiscordのPublic Key |
+| `DISCORD_BOT_TOKEN` | Secret | DiscordのBot Token |
+
+Public KeyとBot Tokenは第三者へ送らず、READMEやチャットにも貼らないでください。項目を保存した後、`Deployments` から同じZIPを再度アップロードして設定を反映します。
+
+### 5. Discordへ接続し、コマンドを自動登録
+
+1. Cloudflareの `Deployments` に表示されたURLを開き、`Discord X-card Worker is running.` と表示されることを確認する
+2. URLをコピーする（例: `https://discord-x-card.pages.dev/`）
+3. Discord Developer PortalのApplicationを開く
+4. `General Information` → `Interactions Endpoint URL` へURLを貼り、保存する
+
+保存時にDiscordから送られる接続確認を受けると、Workerが `/xcard-setup` を自動登録します。Node.jsやコマンド入力は不要です。Discordへ表示されるまで数分かかる場合があります。
+
+### 6. スラッシュコマンドでボタンを設置
+
+DiscordのXカード専用チャンネルで、管理者が次を実行します。
+
+```text
+/xcard-setup
+```
+
+投稿された△と✕のボタンを押して動作を確認します。テスト時は、解除できる人がVCにいる状態で行ってください。
+
+## 開発者向け: Workersへ直接デプロイ
+
+Node.js 22以上が必要です。
 
 ```bash
 npm install
 ```
 
-`wrangler.toml` の次を実値へ変更します。
-
-```toml
-DISCORD_APPLICATION_ID = "Application ID"
-LOG_CHANNEL_ID = "ログチャンネルID"
-```
-
-秘密情報を登録します。
+`wrangler.toml` の `DISCORD_APPLICATION_ID` と `LOG_CHANNEL_ID` を実値へ変更し、秘密情報を登録します。
 
 ```bash
 npx wrangler secret put DISCORD_PUBLIC_KEY
 npx wrangler secret put DISCORD_BOT_TOKEN
-```
-
-## 4. デプロイ
-
-```bash
 npm run check
 npm test
 npm run deploy
 ```
 
-表示されたWorker URLをDiscord Developer Portalの
-`Interactions Endpoint URL` に設定します。
+表示された `workers.dev` のURLを、Discord Developer Portalの `Interactions Endpoint URL` に設定してください。コマンドは接続確認時に自動登録され、カード設置は上の手順6と同じです。
 
-例:
-
-```text
-https://discord-x-card.<subdomain>.workers.dev/
-```
-
-## 5. コマンド登録
-
-ローカルのシェルだけに環境変数を設定して登録します。
+自動登録されたコマンドが長時間表示されない場合は、開発者向けの手動登録も利用できます。
 
 ```bash
 DISCORD_APPLICATION_ID="..." \
 DISCORD_GUILD_ID="..." \
 DISCORD_BOT_TOKEN="..." \
 npm run register
-```
-
-Botトークンをシェル履歴へ残したくない場合は、`read -s` などを使ってください。
-
-DiscordのXカード専用チャンネルで、管理者が次を実行します。
-
-```text
-/xcard-setup
 ```
 
 ## 匿名性
