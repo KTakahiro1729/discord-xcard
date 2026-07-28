@@ -1,4 +1,5 @@
 import {
+  checkBotReadiness,
   editDeferredResponse,
   fetchVoiceSnapshot,
   maxVcMembers,
@@ -12,7 +13,7 @@ import {
   deferredEphemeral,
   ephemeralMessage,
   jsonResponse,
-  safetyCardMessage,
+  safetyCardPayload,
   timeReasonLabel,
   timeReasonMenu,
 } from "./responses";
@@ -23,6 +24,7 @@ import {
 } from "./security";
 import type {
   AutoUnmutePayload,
+  BotReadinessReason,
   DiscordInteraction,
   Env,
   MuteResult,
@@ -33,6 +35,16 @@ const APPLICATION_COMMAND = 2;
 const MESSAGE_COMPONENT = 3;
 const MANAGE_GUILD = 1n << 5n;
 const ADMINISTRATOR = 1n << 3n;
+
+function readinessWarning(reason: BotReadinessReason): string {
+  if (reason === "missing_mute_permission") {
+    return "⚠️ Xカードを有効化できません。Botのロールへ「メンバーをミュート」権限を付与してください。設定後に `/xcard-setup` をもう一度実行してください。";
+  }
+  if (reason === "role_too_low") {
+    return "⚠️ Xカードを有効化できません。Botのロールを、参加者へ割り当てるすべてのロールより上へ移動してください。設定後に `/xcard-setup` をもう一度実行してください。";
+  }
+  return "⚠️ Botの権限とロール位置を確認できなかったため、Xカードを実行しませんでした。管理者はBot設定を確認してください。";
+}
 
 export function canSetUpCard(permissions?: string): boolean {
   if (!permissions) return false;
@@ -126,6 +138,26 @@ async function activateXCard(
   }
 
   try {
+    const readiness = await checkBotReadiness(
+      env.DISCORD_BOT_TOKEN,
+      guildId,
+    );
+    if (!readiness.ready) {
+      const warning = readinessWarning(readiness.reason);
+      await Promise.all([
+        sendChannelMessage(env.DISCORD_BOT_TOKEN, publicChannelId, {
+          content: warning,
+          allowed_mentions: { parse: [] },
+        }),
+        editDeferredResponse(
+          env.DISCORD_APPLICATION_ID,
+          interaction.token,
+          "Botの権限またはロール位置が要件を満たしていないため、Xカードを実行しませんでした。",
+        ),
+      ]);
+      return;
+    }
+
     const snapshot = await fetchVoiceSnapshot(
       env.DISCORD_BOT_TOKEN,
       guildId,
@@ -204,6 +236,51 @@ async function activateXCard(
       "Xカードの処理に失敗しました。管理者に連絡してください。",
     );
   }
+}
+
+async function setupSafetyCards(
+  env: Env,
+  interaction: DiscordInteraction,
+): Promise<void> {
+  const guildId = interaction.guild_id;
+  const channelId = interaction.channel_id;
+  if (!guildId || !channelId) {
+    await editDeferredResponse(
+      env.DISCORD_APPLICATION_ID,
+      interaction.token,
+      "このコマンドはサーバー内でのみ使用できます。",
+    );
+    return;
+  }
+
+  const readiness = await checkBotReadiness(env.DISCORD_BOT_TOKEN, guildId);
+  if (!readiness.ready) {
+    await Promise.all([
+      sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
+        content: readinessWarning(readiness.reason),
+        allowed_mentions: { parse: [] },
+      }),
+      editDeferredResponse(
+        env.DISCORD_APPLICATION_ID,
+        interaction.token,
+        "Botの設定が要件を満たしていないため、カードを設置しませんでした。",
+      ),
+    ]);
+    return;
+  }
+
+  const sent = await sendChannelMessage(
+    env.DISCORD_BOT_TOKEN,
+    channelId,
+    safetyCardPayload(),
+  );
+  await editDeferredResponse(
+    env.DISCORD_APPLICATION_ID,
+    interaction.token,
+    sent
+      ? "セーフティカードを設置しました。"
+      : "カードを設置できませんでした。Botの送信権限を確認してください。",
+  );
 }
 
 async function scheduleAutoUnmute(
@@ -381,7 +458,8 @@ async function handleInteraction(
     if (!canSetUpCard(interaction.member?.permissions)) {
       return ephemeralMessage("この操作には「サーバー管理」権限が必要です。");
     }
-    return jsonResponse(safetyCardMessage());
+    context.waitUntil(setupSafetyCards(env, interaction));
+    return deferredEphemeral();
   }
 
   if (

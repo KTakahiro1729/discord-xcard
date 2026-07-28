@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  evaluateBotReadiness,
   maxVcMembers,
   muteMembers,
   registerSetupCommand,
@@ -64,6 +65,67 @@ describe("setup permissions", () => {
     expect(canSetUpCard(undefined)).toBe(false);
     expect(canSetUpCard("0")).toBe(false);
     expect(canSetUpCard("invalid")).toBe(false);
+  });
+});
+
+describe("bot role readiness", () => {
+  const baseRoles = [
+    {
+      id: "guild",
+      name: "@everyone",
+      permissions: "0",
+      position: 0,
+      managed: false,
+    },
+    {
+      id: "bot-role",
+      name: "X Card Bot",
+      permissions: String(1 << 22),
+      position: 10,
+      managed: true,
+    },
+    {
+      id: "participant",
+      name: "Participant",
+      permissions: "0",
+      position: 5,
+      managed: false,
+    },
+  ];
+
+  it("accepts a bot with Mute Members above assignable roles", () => {
+    expect(
+      evaluateBotReadiness("guild", baseRoles, ["bot-role"]),
+    ).toEqual({ ready: true, reason: "ready" });
+  });
+
+  it("rejects a bot below an assignable participant role", () => {
+    expect(
+      evaluateBotReadiness(
+        "guild",
+        [
+          ...baseRoles,
+          {
+            id: "higher-role",
+            name: "Administrator",
+            permissions: "0",
+            position: 11,
+            managed: false,
+          },
+        ],
+        ["bot-role"],
+      ),
+    ).toEqual({ ready: false, reason: "role_too_low" });
+  });
+
+  it("rejects a bot without Mute Members", () => {
+    const roles = baseRoles.map((role) =>
+      role.id === "bot-role" ? { ...role, permissions: "0" } : role,
+    );
+    expect(evaluateBotReadiness("guild", roles, ["bot-role"])).toEqual({
+      ready: false,
+      reason: "missing_mute_permission",
+    });
   });
 });
 

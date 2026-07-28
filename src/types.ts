@@ -14,6 +14,7 @@ export interface DiscordUser {
 export interface DiscordMember {
   user: DiscordUser;
   permissions?: string;
+  roles?: string[];
 }
 
 export interface DiscordInteraction {
@@ -67,4 +68,23 @@ export interface AutoUnmutePayload {
   guildId: string;
   memberIds: string[];
   issuedAt: number;
+}
+
+export interface GuildRole {
+  id: string;
+  name: string;
+  permissions: string;
+  position: number;
+  managed: boolean;
+}
+
+export type BotReadinessReason =
+  | "ready"
+  | "missing_mute_permission"
+  | "role_too_low"
+  | "check_failed";
+
+export interface BotReadiness {
+  ready: boolean;
+  reason: BotReadinessReason;
 }
