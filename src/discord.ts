@@ -51,6 +51,12 @@ export function snapshotForUser(
     memberIds: voiceStates
       .filter((state) => state.channel_id === actorState.channel_id)
       .map((state) => state.user_id),
+    memberIdsToMute: voiceStates
+      .filter(
+        (state) =>
+          state.channel_id === actorState.channel_id && state.mute !== true,
+      )
+      .map((state) => state.user_id),
   };
 }
 
@@ -192,7 +198,38 @@ export async function muteMembers(
   guildId: string,
   memberIds: string[],
 ): Promise<MuteResult> {
+  return setMemberMuteState(
+    token,
+    guildId,
+    memberIds,
+    true,
+    "X-card activated",
+  );
+}
+
+export async function unmuteMembers(
+  token: string,
+  guildId: string,
+  memberIds: string[],
+): Promise<MuteResult> {
+  return setMemberMuteState(
+    token,
+    guildId,
+    memberIds,
+    false,
+    "X-card automatic release",
+  );
+}
+
+async function setMemberMuteState(
+  token: string,
+  guildId: string,
+  memberIds: string[],
+  mute: boolean,
+  auditReason: string,
+): Promise<MuteResult> {
   let succeeded = 0;
+  const succeededMemberIds: string[] = [];
   let cursor = 0;
   const concurrency = Math.min(4, memberIds.length);
 
@@ -208,13 +245,16 @@ export async function muteMembers(
         {
           method: "PATCH",
           headers: {
-            "X-Audit-Log-Reason": "X-card activated",
+            "X-Audit-Log-Reason": auditReason,
           },
-          body: JSON.stringify({ mute: true }),
+          body: JSON.stringify({ mute }),
         },
       );
 
-      if (response.ok) succeeded += 1;
+      if (response.ok) {
+        succeeded += 1;
+        succeededMemberIds.push(memberId);
+      }
       await response.body?.cancel();
     }
   };
@@ -224,6 +264,7 @@ export async function muteMembers(
     attempted: memberIds.length,
     succeeded,
     failed: memberIds.length - succeeded,
+    succeededMemberIds,
   };
 }
 

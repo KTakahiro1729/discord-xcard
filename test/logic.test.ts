@@ -1,15 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   maxVcMembers,
+  muteMembers,
   registerSetupCommand,
   snapshotForUser,
+  unmuteMembers,
 } from "../src/discord";
 import {
+  DEFAULT_AUTO_UNMUTE_SECONDS,
+  MAX_AUTO_UNMUTE_SECONDS,
   X_CARD_DELAY_MAX_MS,
   X_CARD_DELAY_MIN_MS,
+  autoUnmuteSeconds,
   randomXCardDelayMs,
 } from "../src/config";
 import { canSetUpCard } from "../src/index";
+import {
+  signInternalRequest,
+  verifyInternalRequest,
+} from "../src/security";
 import {
   safetyCardMessage,
   timeReasonLabel,
@@ -26,7 +35,7 @@ describe("voice snapshot", () => {
       snapshotForUser(
         [
           { user_id: "actor", channel_id: "voice-a" },
-          { user_id: "friend", channel_id: "voice-a" },
+          { user_id: "friend", channel_id: "voice-a", mute: true },
           { user_id: "other", channel_id: "voice-b" },
         ],
         "actor",
@@ -34,6 +43,7 @@ describe("voice snapshot", () => {
     ).toEqual({
       channelId: "voice-a",
       memberIds: ["actor", "friend"],
+      memberIdsToMute: ["actor"],
     });
   });
 
@@ -80,6 +90,41 @@ describe("command registration", () => {
   });
 });
 
+describe("server mute changes", () => {
+  it("returns the members actually muted and uses distinct audit reasons", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    await expect(muteMembers("token", "1", ["2"])).resolves.toMatchObject({
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      succeededMemberIds: ["2"],
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "https://discord.com/api/v10/guilds/1/members/2",
+      expect.objectContaining({
+        body: '{"mute":true}',
+        headers: expect.objectContaining({
+          "X-Audit-Log-Reason": "X-card activated",
+        }),
+      }),
+    );
+
+    await unmuteMembers("token", "1", ["2"]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "https://discord.com/api/v10/guilds/1/members/2",
+      expect.objectContaining({
+        body: '{"mute":false}',
+        headers: expect.objectContaining({
+          "X-Audit-Log-Reason": "X-card automatic release",
+        }),
+      }),
+    );
+  });
+});
+
 describe("configuration", () => {
   it("caps the free-plan safety limit", () => {
     expect(maxVcMembers({ MAX_VC_MEMBERS: "100" } as never)).toBe(45);
@@ -90,6 +135,14 @@ describe("configuration", () => {
   it("keeps the X-card delay within the configured random range", () => {
     expect(randomXCardDelayMs(() => 0)).toBe(X_CARD_DELAY_MIN_MS);
     expect(randomXCardDelayMs(() => 0.999999)).toBe(X_CARD_DELAY_MAX_MS);
+  });
+
+  it("defaults auto-unmute to five seconds and allows zero to disable it", () => {
+    expect(autoUnmuteSeconds()).toBe(DEFAULT_AUTO_UNMUTE_SECONDS);
+    expect(autoUnmuteSeconds("0")).toBe(0);
+    expect(autoUnmuteSeconds("8")).toBe(8);
+    expect(autoUnmuteSeconds("999")).toBe(MAX_AUTO_UNMUTE_SECONDS);
+    expect(autoUnmuteSeconds("invalid")).toBe(DEFAULT_AUTO_UNMUTE_SECONDS);
   });
 
   it("creates persistent Time and X-card buttons", () => {
@@ -147,5 +200,19 @@ describe("configuration", () => {
       "言い方を柔らかくしてほしい",
     );
     expect(timeReasonLabel("unknown")).toBeNull();
+  });
+});
+
+describe("internal request signing", () => {
+  it("accepts only a matching auto-unmute payload signature", async () => {
+    const body = JSON.stringify({ guildId: "1", memberIds: ["2"] });
+    const signature = await signInternalRequest(body, "bot-token");
+
+    await expect(
+      verifyInternalRequest(body, signature, "bot-token"),
+    ).resolves.toBe(true);
+    await expect(
+      verifyInternalRequest(`${body}x`, signature, "bot-token"),
+    ).resolves.toBe(false);
   });
 });

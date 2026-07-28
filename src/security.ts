@@ -18,6 +18,52 @@ function encodeToBuffer(value: string): ArrayBuffer {
   return buffer;
 }
 
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function internalSigningKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    encodeToBuffer(`discord-x-card:auto-unmute:${secret}`),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+export async function signInternalRequest(
+  body: string,
+  secret: string,
+): Promise<string> {
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await internalSigningKey(secret),
+    encodeToBuffer(body),
+  );
+  return bufferToHex(signature);
+}
+
+export async function verifyInternalRequest(
+  body: string,
+  signatureHex: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (!signatureHex) return false;
+  try {
+    return await crypto.subtle.verify(
+      "HMAC",
+      await internalSigningKey(secret),
+      hexToBuffer(signatureHex),
+      encodeToBuffer(body),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyDiscordRequest(
   request: Request,
   body: string,

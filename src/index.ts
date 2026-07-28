@@ -5,8 +5,9 @@ import {
   muteMembers,
   registerSetupCommand,
   sendChannelMessage,
+  unmuteMembers,
 } from "./discord";
-import { randomXCardDelayMs } from "./config";
+import { autoUnmuteSeconds, randomXCardDelayMs } from "./config";
 import {
   deferredEphemeral,
   ephemeralMessage,
@@ -15,8 +16,17 @@ import {
   timeReasonLabel,
   timeReasonMenu,
 } from "./responses";
-import { verifyDiscordRequest } from "./security";
-import type { DiscordInteraction, Env, MuteResult } from "./types";
+import {
+  signInternalRequest,
+  verifyDiscordRequest,
+  verifyInternalRequest,
+} from "./security";
+import type {
+  AutoUnmutePayload,
+  DiscordInteraction,
+  Env,
+  MuteResult,
+} from "./types";
 
 const INTERACTION_PING = 1;
 const APPLICATION_COMMAND = 2;
@@ -37,11 +47,16 @@ export function canSetUpCard(permissions?: string): boolean {
 function publicNotification(
   channelId: string,
   result: MuteResult,
+  autoUnmuteAfter: number,
 ): Record<string, unknown> {
+  const releaseNotice =
+    autoUnmuteAfter === 0
+      ? "必要な確認が終わったら、Discordの標準操作でサーバーミュートを解除してください。"
+      : `約${autoUnmuteAfter}秒後にBotが自動解除します。`;
   const description =
     result.failed === 0
-      ? "このVCでXカードが使用されました。必要な確認が終わったら、Discordの標準操作でサーバーミュートを解除してください。"
-      : `このVCでXカードが使用されました。${result.failed}名のミュートに失敗したため、権限設定を確認してください。`;
+      ? `このVCでXカードが使用されました。${releaseNotice}`
+      : `このVCでXカードが使用されました。${result.failed}名のミュートに失敗しました。${releaseNotice}`;
 
   return {
     embeds: [
@@ -94,6 +109,7 @@ function privateLog(
 async function activateXCard(
   env: Env,
   interaction: DiscordInteraction,
+  workerOrigin: string,
 ): Promise<void> {
   const muteAfter = Date.now() + randomXCardDelayMs();
   const guildId = interaction.guild_id;
@@ -143,14 +159,17 @@ async function activateXCard(
     const result = await muteMembers(
       env.DISCORD_BOT_TOKEN,
       guildId,
-      snapshot.memberIds,
+      snapshot.memberIdsToMute,
+    );
+    const autoUnmuteAfter = autoUnmuteSeconds(
+      env.X_CARD_AUTO_UNMUTE_SECONDS,
     );
 
     await Promise.all([
       sendChannelMessage(
         env.DISCORD_BOT_TOKEN,
         publicChannelId,
-        publicNotification(snapshot.channelId, result),
+        publicNotification(snapshot.channelId, result, autoUnmuteAfter),
       ),
       sendChannelMessage(
         env.DISCORD_BOT_TOKEN,
@@ -163,9 +182,19 @@ async function activateXCard(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
       result.failed === 0
-        ? `${result.succeeded}名をサーバーミュートしました。あなたの名前は記録されていません。`
-        : `${result.succeeded}名をミュートしましたが、${result.failed}名に失敗しました。あなたの名前は記録されていません。`,
+        ? `${result.succeeded}名をサーバーミュートしました。${autoUnmuteAfter === 0 ? "自動解除は無効です。" : `約${autoUnmuteAfter}秒後に自動解除します。`}あなたの名前は記録されていません。`
+        : `${result.succeeded}名をミュートしましたが、${result.failed}名に失敗しました。${autoUnmuteAfter === 0 ? "自動解除は無効です。" : `成功したメンバーは約${autoUnmuteAfter}秒後に自動解除します。`}あなたの名前は記録されていません。`,
     );
+
+    if (autoUnmuteAfter > 0 && result.succeededMemberIds.length > 0) {
+      await scheduleAutoUnmute(
+        workerOrigin,
+        env,
+        guildId,
+        result.succeededMemberIds,
+        autoUnmuteAfter,
+      );
+    }
   } catch {
     // Never include interaction data or the actor ID in runtime logs.
     console.error("X-card activation failed");
@@ -175,6 +204,116 @@ async function activateXCard(
       "Xカードの処理に失敗しました。管理者に連絡してください。",
     );
   }
+}
+
+async function scheduleAutoUnmute(
+  workerOrigin: string,
+  env: Env,
+  guildId: string,
+  memberIds: string[],
+  delaySeconds: number,
+): Promise<void> {
+  await new Promise((resolve) =>
+    setTimeout(resolve, delaySeconds * 1000),
+  );
+
+  const payload: AutoUnmutePayload = {
+    guildId,
+    memberIds,
+    issuedAt: Date.now(),
+  };
+  const body = JSON.stringify(payload);
+  const signature = await signInternalRequest(
+    body,
+    env.DISCORD_BOT_TOKEN,
+  );
+  const response = await fetch(
+    new URL("/internal/auto-unmute", workerOrigin),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-XCard-Signature": signature,
+      },
+      body,
+    },
+  );
+
+  if (!response.ok) {
+    console.error("Automatic unmute dispatch failed");
+  }
+  await response.body?.cancel();
+}
+
+function validAutoUnmutePayload(
+  payload: unknown,
+): payload is AutoUnmutePayload {
+  if (!payload || typeof payload !== "object") return false;
+  const value = payload as Partial<AutoUnmutePayload>;
+  return (
+    typeof value.guildId === "string" &&
+    /^\d{1,20}$/.test(value.guildId) &&
+    Array.isArray(value.memberIds) &&
+    value.memberIds.length <= 45 &&
+    value.memberIds.every(
+      (memberId) =>
+        typeof memberId === "string" && /^\d{1,20}$/.test(memberId),
+    ) &&
+    typeof value.issuedAt === "number" &&
+    Math.abs(Date.now() - value.issuedAt) <= 60_000
+  );
+}
+
+async function handleAutoUnmute(
+  request: Request,
+  env: Env,
+  context: ExecutionContext,
+): Promise<Response> {
+  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (contentLength > 20_000) {
+    return new Response("Payload Too Large", { status: 413 });
+  }
+
+  const body = await request.text();
+  if (body.length > 20_000) {
+    return new Response("Payload Too Large", { status: 413 });
+  }
+
+  const validSignature = await verifyInternalRequest(
+    body,
+    request.headers.get("X-XCard-Signature"),
+    env.DISCORD_BOT_TOKEN,
+  );
+  if (!validSignature) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+  if (!validAutoUnmutePayload(payload)) {
+    return new Response("Invalid payload", { status: 400 });
+  }
+
+  context.waitUntil(
+    unmuteMembers(
+      env.DISCORD_BOT_TOKEN,
+      payload.guildId,
+      payload.memberIds,
+    )
+      .then((result) => {
+        if (result.failed > 0) {
+          console.error("Automatic unmute partially failed");
+        }
+      })
+      .catch(() => {
+        console.error("Automatic unmute failed");
+      }),
+  );
+  return new Response(null, { status: 202 });
 }
 
 async function postTime(
@@ -220,6 +359,7 @@ async function handleInteraction(
   interaction: DiscordInteraction,
   env: Env,
   context: ExecutionContext,
+  workerOrigin: string,
 ): Promise<Response> {
   if (interaction.type === INTERACTION_PING) {
     context.waitUntil(
@@ -268,7 +408,7 @@ async function handleInteraction(
     interaction.type === MESSAGE_COMPONENT &&
     interaction.data?.custom_id === "xcard:activate"
   ) {
-    context.waitUntil(activateXCard(env, interaction));
+    context.waitUntil(activateXCard(env, interaction, workerOrigin));
     return deferredEphemeral();
   }
 
@@ -281,6 +421,7 @@ export default {
     env: Env,
     context: ExecutionContext,
   ): Promise<Response> {
+    const url = new URL(request.url);
     if (request.method === "GET") {
       return new Response("Discord X-card Worker is running.", {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -289,6 +430,10 @@ export default {
 
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
+    }
+
+    if (url.pathname === "/internal/auto-unmute") {
+      return handleAutoUnmute(request, env, context);
     }
 
     const body = await request.text();
@@ -308,6 +453,6 @@ export default {
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    return handleInteraction(interaction, env, context);
+    return handleInteraction(interaction, env, context, url.origin);
   },
 } satisfies ExportedHandler<Env>;

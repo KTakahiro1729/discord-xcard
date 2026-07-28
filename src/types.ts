@@ -4,6 +4,7 @@ export interface Env {
   DISCORD_BOT_TOKEN: string;
   LOG_CHANNEL_ID: string;
   MAX_VC_MEMBERS?: string;
+  X_CARD_AUTO_UNMUTE_SECONDS?: string;
 }
 
 export interface DiscordUser {
@@ -34,6 +35,7 @@ export interface DiscordInteraction {
 export interface VoiceState {
   user_id: string;
   channel_id: string | null;
+  mute?: boolean;
 }
 
 export interface GatewayPayload {
@@ -51,10 +53,18 @@ export interface GuildCreateData {
 export interface VoiceSnapshot {
   channelId: string;
   memberIds: string[];
+  memberIdsToMute: string[];
 }
 
 export interface MuteResult {
   attempted: number;
   succeeded: number;
   failed: number;
+  succeededMemberIds: string[];
+}
+
+export interface AutoUnmutePayload {
+  guildId: string;
+  memberIds: string[];
+  issuedAt: number;
 }
