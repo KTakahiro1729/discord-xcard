@@ -1,13 +1,6 @@
-const EPHEMERAL = 1 << 6;
+import { TIME_REASONS } from "./config";
 
-export const TIME_REASONS = [
-  { label: "話題を変えたい", value: "change_topic" },
-  { label: "一言だけ挟みたい（退席・連絡など）", value: "brief_interruption" },
-  { label: "ペースを落としてほしい", value: "slow_down" },
-  { label: "他の人に振ってほしい", value: "pass_to_others" },
-  { label: "時間を気にしてほしい", value: "watch_time" },
-  { label: "理由は言わない", value: "no_reason" },
-] as const;
+const EPHEMERAL = 1 << 6;
 
 export function timeReasonLabel(value?: string): string | null {
   return TIME_REASONS.find((reason) => reason.value === value)?.label ?? null;

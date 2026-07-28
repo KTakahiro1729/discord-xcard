@@ -100,7 +100,7 @@ describe("configuration", () => {
     });
   });
 
-  it("offers only the six supported anonymous Time categories", async () => {
+  it("offers the configured anonymous Time categories", async () => {
     const response = await timeReasonMenu().json() as {
       data: {
         flags: number;
@@ -125,10 +125,17 @@ describe("configuration", () => {
         { label: "ペースを落としてほしい", value: "slow_down" },
         { label: "他の人に振ってほしい", value: "pass_to_others" },
         { label: "時間を気にしてほしい", value: "watch_time" },
+        {
+          label: "言い方を柔らかくしてほしい",
+          value: "soften_wording",
+        },
         { label: "理由は言わない", value: "no_reason" },
       ],
     });
     expect(timeReasonLabel("watch_time")).toBe("時間を気にしてほしい");
+    expect(timeReasonLabel("soften_wording")).toBe(
+      "言い方を柔らかくしてほしい",
+    );
     expect(timeReasonLabel("unknown")).toBeNull();
   });
 });
