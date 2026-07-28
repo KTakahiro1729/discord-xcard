@@ -4,6 +4,11 @@ import {
   registerSetupCommand,
   snapshotForUser,
 } from "../src/discord";
+import {
+  X_CARD_DELAY_MAX_MS,
+  X_CARD_DELAY_MIN_MS,
+  randomXCardDelayMs,
+} from "../src/config";
 import { canSetUpCard } from "../src/index";
 import {
   safetyCardMessage,
@@ -80,6 +85,11 @@ describe("configuration", () => {
     expect(maxVcMembers({ MAX_VC_MEMBERS: "100" } as never)).toBe(45);
     expect(maxVcMembers({ MAX_VC_MEMBERS: "12" } as never)).toBe(12);
     expect(maxVcMembers({ MAX_VC_MEMBERS: "invalid" } as never)).toBe(40);
+  });
+
+  it("keeps the X-card delay within the configured random range", () => {
+    expect(randomXCardDelayMs(() => 0)).toBe(X_CARD_DELAY_MIN_MS);
+    expect(randomXCardDelayMs(() => 0.999999)).toBe(X_CARD_DELAY_MAX_MS);
   });
 
   it("creates persistent Time and X-card buttons", () => {

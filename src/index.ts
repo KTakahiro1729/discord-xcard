@@ -6,6 +6,7 @@ import {
   registerSetupCommand,
   sendChannelMessage,
 } from "./discord";
+import { randomXCardDelayMs } from "./config";
 import {
   deferredEphemeral,
   ephemeralMessage,
@@ -94,6 +95,7 @@ async function activateXCard(
   env: Env,
   interaction: DiscordInteraction,
 ): Promise<void> {
+  const muteAfter = Date.now() + randomXCardDelayMs();
   const guildId = interaction.guild_id;
   const publicChannelId = interaction.channel_id;
   const actorId = interaction.member?.user.id;
@@ -131,6 +133,11 @@ async function activateXCard(
         `このVCの参加者数が安全上限（${limit}名）を超えています。管理者に連絡してください。`,
       );
       return;
+    }
+
+    const remainingDelay = muteAfter - Date.now();
+    if (remainingDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remainingDelay));
     }
 
     const result = await muteMembers(

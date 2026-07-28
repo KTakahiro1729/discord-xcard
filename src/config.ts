@@ -16,3 +16,15 @@ export const TIME_REASONS = [
   { label: "言い方を柔らかくしてほしい", value: "soften_wording" },
   { label: "理由は言わない", value: "no_reason" },
 ] as const;
+
+/**
+ * Xカードの押下からミュート開始までのランダム遅延です。
+ * 発言時刻と発動時刻の直接的な対応を少し曖昧にします。
+ */
+export const X_CARD_DELAY_MIN_MS = 5_000;
+export const X_CARD_DELAY_MAX_MS = 10_000;
+
+export function randomXCardDelayMs(random = Math.random): number {
+  const range = X_CARD_DELAY_MAX_MS - X_CARD_DELAY_MIN_MS + 1;
+  return X_CARD_DELAY_MIN_MS + Math.floor(random() * range);
+}
