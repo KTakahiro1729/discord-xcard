@@ -1,7 +1,9 @@
 import type {
+  BotReadiness,
   Env,
   GatewayPayload,
   GuildCreateData,
+  GuildRole,
   MuteResult,
   VoiceSnapshot,
   VoiceState,
@@ -12,6 +14,84 @@ const DISCORD_GATEWAY =
   "wss://gateway.discord.gg/?v=10&encoding=json";
 const GATEWAY_INTENTS = (1 << 0) | (1 << 7); // GUILDS | GUILD_VOICE_STATES
 const GATEWAY_TIMEOUT_MS = 15_000;
+const ADMINISTRATOR = 1n << 3n;
+const MUTE_MEMBERS = 1n << 22n;
+
+export function evaluateBotReadiness(
+  guildId: string,
+  roles: GuildRole[],
+  botRoleIds: string[],
+): BotReadiness {
+  const botRoleSet = new Set(botRoleIds);
+  const botRoles = roles.filter((role) => botRoleSet.has(role.id));
+  const botHighestPosition = Math.max(
+    0,
+    ...botRoles.map((role) => role.position),
+  );
+
+  const permissions = roles
+    .filter((role) => role.id === guildId || botRoleSet.has(role.id))
+    .reduce((bits, role) => bits | BigInt(role.permissions), 0n);
+  if (
+    (permissions & ADMINISTRATOR) === 0n &&
+    (permissions & MUTE_MEMBERS) === 0n
+  ) {
+    return { ready: false, reason: "missing_mute_permission" };
+  }
+
+  const higherAssignableRoleExists = roles.some(
+    (role) =>
+      role.id !== guildId &&
+      !role.managed &&
+      !botRoleSet.has(role.id) &&
+      role.position >= botHighestPosition,
+  );
+  if (higherAssignableRoleExists) {
+    return { ready: false, reason: "role_too_low" };
+  }
+
+  return { ready: true, reason: "ready" };
+}
+
+export async function checkBotReadiness(
+  token: string,
+  guildId: string,
+): Promise<BotReadiness> {
+  try {
+    const userResponse = await discordApi(token, "/users/@me", {
+      method: "GET",
+    });
+    if (!userResponse.ok) {
+      await userResponse.body?.cancel();
+      return { ready: false, reason: "check_failed" };
+    }
+    const user = (await userResponse.json()) as { id?: string };
+    if (!user.id) return { ready: false, reason: "check_failed" };
+
+    const [rolesResponse, memberResponse] = await Promise.all([
+      discordApi(token, `/guilds/${guildId}/roles`, { method: "GET" }),
+      discordApi(token, `/guilds/${guildId}/members/${user.id}`, {
+        method: "GET",
+      }),
+    ]);
+    if (!rolesResponse.ok || !memberResponse.ok) {
+      await Promise.all([
+        rolesResponse.body?.cancel(),
+        memberResponse.body?.cancel(),
+      ]);
+      return { ready: false, reason: "check_failed" };
+    }
+
+    const roles = (await rolesResponse.json()) as GuildRole[];
+    const member = (await memberResponse.json()) as { roles?: string[] };
+    if (!Array.isArray(roles) || !Array.isArray(member.roles)) {
+      return { ready: false, reason: "check_failed" };
+    }
+    return evaluateBotReadiness(guildId, roles, member.roles);
+  } catch {
+    return { ready: false, reason: "check_failed" };
+  }
+}
 
 export async function registerSetupCommand(env: Env): Promise<boolean> {
   const response = await discordApi(
@@ -50,6 +130,12 @@ export function snapshotForUser(
     channelId: actorState.channel_id,
     memberIds: voiceStates
       .filter((state) => state.channel_id === actorState.channel_id)
+      .map((state) => state.user_id),
+    memberIdsToMute: voiceStates
+      .filter(
+        (state) =>
+          state.channel_id === actorState.channel_id && state.mute !== true,
+      )
       .map((state) => state.user_id),
   };
 }
@@ -192,7 +278,38 @@ export async function muteMembers(
   guildId: string,
   memberIds: string[],
 ): Promise<MuteResult> {
+  return setMemberMuteState(
+    token,
+    guildId,
+    memberIds,
+    true,
+    "X-card activated",
+  );
+}
+
+export async function unmuteMembers(
+  token: string,
+  guildId: string,
+  memberIds: string[],
+): Promise<MuteResult> {
+  return setMemberMuteState(
+    token,
+    guildId,
+    memberIds,
+    false,
+    "X-card automatic release",
+  );
+}
+
+async function setMemberMuteState(
+  token: string,
+  guildId: string,
+  memberIds: string[],
+  mute: boolean,
+  auditReason: string,
+): Promise<MuteResult> {
   let succeeded = 0;
+  const succeededMemberIds: string[] = [];
   let cursor = 0;
   const concurrency = Math.min(4, memberIds.length);
 
@@ -208,13 +325,16 @@ export async function muteMembers(
         {
           method: "PATCH",
           headers: {
-            "X-Audit-Log-Reason": "X-card activated",
+            "X-Audit-Log-Reason": auditReason,
           },
-          body: JSON.stringify({ mute: true }),
+          body: JSON.stringify({ mute }),
         },
       );
 
-      if (response.ok) succeeded += 1;
+      if (response.ok) {
+        succeeded += 1;
+        succeededMemberIds.push(memberId);
+      }
       await response.body?.cancel();
     }
   };
@@ -224,6 +344,7 @@ export async function muteMembers(
     attempted: memberIds.length,
     succeeded,
     failed: memberIds.length - succeeded,
+    succeededMemberIds,
   };
 }
 

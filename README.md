@@ -1,6 +1,6 @@
 # Discord 匿名セーフティカード
 
-Discord のボイスチャットで使える、匿名のタイム／Xカードです。Cloudflare Workers または Cloudflare Pages 上で動作します。
+Discord のボイスチャットで使える、匿名のタイム／Xカードです。Cloudflare Workers 上で動作します。
 
 - **⏱ タイム** — 選択した理由カテゴリだけを、匿名で知らせます
 - **✕ Xカード** — 会話をすぐに止めたいとき、同じVCにいる全員をサーバーミュートします
@@ -8,7 +8,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 どちらのカードも、発動者のIDや名前を保存・表示しません。身内や小規模なDiscordサーバーでの利用を想定しています。
 
 > [!IMPORTANT]
-> Xカードは、押した本人を含むVC参加者全員をサーバーミュートします。解除はDiscordの標準UIから手動で行います。テストするときは、ミュートを解除できる管理者がVCにいる状態で実行してください。
+> Xカードは、押した本人を含むVC参加者全員をサーバーミュートします。初期設定では5秒後にBotが自動解除します。自動解除は短時間のベストエフォート処理なので、テストするときは手動解除できる管理者がVCにいる状態で実行してください。
 
 ## 仕組み
 
@@ -33,11 +33,13 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 3. Discord Gatewayへ一時的に接続し、発動者が参加しているVCを特定する
 4. 発火時刻まで待ち、そのVCにいた全員をサーバーミュートする
 5. 公開チャンネルと非公開ログチャンネルへ、Bot名義で結果を通知する
-6. Gateway接続を終了する
+6. 設定時間後、今回Botがミュートできたメンバーだけを自動解除する
+7. Gateway接続を終了する
 
 ## 導入に必要なもの
 
 - Cloudflareアカウント
+- GitHubアカウントと、このリポジトリへのアクセス権
 - Discordサーバーの管理権限
 - 以下の権限を持つDiscord Bot
   - チャンネルを見る
@@ -46,11 +48,12 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
   - メンバーをミュート
   - メッセージ履歴を読む
 
-Botのロールは、ミュート対象となる通常メンバーのロールより上に配置してください。
+> [!IMPORTANT]
+> Botのロールは、参加者へ割り当てるすべてのロールより上に配置してください。また、Botのロールへ「メンバーをミュート」権限を付与してください。このBotは安全側へ倒すため、Discordの最低要件より保守的にこの条件を必須とします。
 
 ## かんたんセットアップ
 
-コマンド入力やプログラムの編集は必要ありません。配布ZIPをCloudflare Pagesへアップロードし、5つの設定値を入力します。
+コマンド入力やプログラムの編集は必要ありません。GitHubリポジトリをCloudflareへ接続し、設定値を入力します。以後は `main` ブランチの更新が自動デプロイされます。
 
 ### 1. Discordアプリを作成する
 
@@ -62,6 +65,7 @@ Botのロールは、ミュート対象となる通常メンバーのロール�
 4. `Bot` ページでTokenを発行する
 5. `OAuth2` → `URL Generator` で `bot` と `applications.commands` を選ぶ
 6. 「導入に必要なもの」に記載したBot権限を選び、Botをサーバーへ追加する
+7. サーバー設定のロール一覧で、Botのロールを参加者へ割り当てるすべてのロールより上へ移動する
 
 `GUILD_VOICE_STATES` は非特権Intentのため、Developer Portalで個別に有効化する必要はありません。
 
@@ -74,19 +78,33 @@ Botのロールは、ミュート対象となる通常メンバーのロール�
 
 チャンネルIDは、Discordの開発者モードを有効にすると右クリックメニューからコピーできます。
 
-### 3. Cloudflare Pagesへデプロイする
+### 3. GitHubリポジトリをCloudflareへ接続する
 
-1. [`discord-x-card-pages.zip` をダウンロード](https://github.com/KTakahiro1729/discord-xcard/releases/download/easy-install/discord-x-card-pages.zip)する
-2. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
-3. `Workers & Pages` → `Create application` → `Pages` → `Upload assets` を選ぶ
-4. プロジェクト名（例: `discord-x-card`）を入力する
-5. ZIPを展開せずにアップロードし、`Deploy site` を押す
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
+2. `Workers & Pages` → `Create application` を選ぶ
+3. `Import a repository` の `Get started` を選ぶ
+4. GitHubを接続し、`KTakahiro1729/discord-xcard` を選ぶ
+5. 次のビルド設定を確認する
 
-配布ZIPには、Pagesの高度なモードで動作する `_worker.js` が含まれています。ZIPはGitHub Actionsによって `main` の更新ごとにテスト・再生成されるため、ソースコードから手作業でビルドする必要はありません。
+| 項目 | 設定値 |
+|---|---|
+| Project name | `discord-x-card` |
+| Production branch | `main` |
+| Build command | 空欄 |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | 空欄 |
+
+6. `Save and Deploy` を押す
+7. デプロイ完了後、表示された `workers.dev` のURLを控える
+
+> [!IMPORTANT]
+> Cloudflare上のWorker名は `discord-x-card` にしてください。`wrangler.toml` の名前と異なる場合、Git連携のビルドは失敗します。
+>
+> Git連携には対象リポジトリへのアクセス権が必要です。第三者へ配布する場合は、このリポジトリを公開するか、利用者自身がアクセス可能なコピーを用意する必要があります。
 
 ### 4. 環境変数を設定する
 
-作成したPagesプロジェクトで `Settings` → `Variables and Secrets` を開き、Production環境に次の5項目を追加します。
+作成したWorkerで `Settings` → `Variables & Secrets` を開き、Production環境に必須の5項目を追加します。自動解除時間は任意で追加できます。ビルド時の変数ではなく、Workerのランタイム変数として設定してください。
 
 | 名前 | 種類 | 値 |
 |---|---|---|
@@ -95,17 +113,18 @@ Botのロールは、ミュート対象となる通常メンバーのロール�
 | `MAX_VC_MEMBERS` | Text | `40` |
 | `DISCORD_PUBLIC_KEY` | Secret | DiscordのPublic Key |
 | `DISCORD_BOT_TOKEN` | Secret | DiscordのBot Token |
+| `X_CARD_AUTO_UNMUTE_SECONDS` | Text（任意） | 自動解除までの秒数。未設定は`5`、`0`で無効、最大`10` |
 
 > [!CAUTION]
 > Public KeyとBot Tokenは第三者へ送らず、READMEやチャットにも貼らないでください。
 
-保存後、`Deployments` から同じZIPをもう一度アップロードし、設定を反映します。
+保存後、WorkerのURLをもう一度開き、正常に応答することを確認します。今後 `main` が更新されると、Cloudflare Workers Buildsが自動的にビルドとデプロイを行います。
 
 ### 5. Discordと接続する
 
 1. Cloudflareの `Deployments` に表示されたURLを開く
 2. `Discord X-card Worker is running.` と表示されることを確認する
-3. URL（例: `https://discord-x-card.pages.dev/`）をコピーする
+3. URL（例: `https://discord-x-card.<アカウント名>.workers.dev/`）をコピーする
 4. Discord Developer Portalで対象のApplicationを開く
 5. `General Information` → `Interactions Endpoint URL` にURLを貼り、保存する
 
@@ -119,7 +138,9 @@ Xカード用のチャンネルで、サーバー管理権限を持つユーザ�
 /xcard-setup
 ```
 
-投稿された⏱と✕のボタンを押し、動作を確認してください。
+実行時にBotの「メンバーをミュート」権限とロール位置を確認します。要件を満たさない場合はカードを設置せず、そのチャンネルへ公開警告を投稿します。
+
+投稿された⏱と✕のボタンを押し、動作を確認してください。X発動直前にも同じ確認を行うため、設置後にロール設定が変わった場合は誰もミュートせず公開警告を投稿します。
 
 ## 運用ルールの例
 
@@ -152,14 +173,24 @@ Xカード用のチャンネルで、サーバー管理権限を持つユーザ�
 
 設定値を45より大きくしても、コード側で45に制限されます。
 
+`X_CARD_AUTO_UNMUTE_SECONDS` は未設定時5秒です。値を `0` にすると自動解除せず、従来どおりDiscordの標準UIで解除します。1〜10秒を指定でき、それより大きい値は10秒に制限されます。
+
+自動解除にはKV、D1、Durable Objects、Workflowsを使用しません。ミュート後に署名付きの内部リクエストを同じWorkerへ送り、別の実行枠で解除します。追加サービスやbindingは不要です。
+
+> [!WARNING]
+> 自動解除はCloudflareの短時間バックグラウンド処理に依存するベストエフォート機能です。WorkerやDiscord APIの障害時には解除されない可能性があるため、管理者は手動解除できる状態を維持してください。重複したXは独立して処理され、先に発動したXの自動解除が、後から発動したXのミュートを早めに解除する場合があります。これは連打で停止時間が延び続けないよう、早い解除を優先する仕様です。
+
 ## エラー時の動作
 
 | 状況 | 動作 |
 |---|---|
 | 発動者がVCにいない | 発動者だけにエラーを表示 |
-| Botの権限が不足している | 公開通知と管理ログに失敗人数を表示 |
+| Botに「メンバーをミュート」権限がない | カード設置またはX実行を中止し、チャンネルへ公開警告を表示 |
+| Botのロールが参加者用ロール以下にある | カード設置またはX実行を中止し、ロールを上へ移動するよう公開警告を表示 |
+| VC固有の権限などにより一部処理できない | 公開通知と管理ログに失敗人数を表示 |
 | GatewayからVC情報を取得できない | 発動者だけに一般化したエラーを表示 |
-| ボタンが重複して押された | 同じミュート状態への更新を行う。通知は重複する可能性がある |
+| ボタンが重複して押された | 各Xを独立処理する。通知は重複し、先の自動解除が後のミュートを早めに解除する場合がある |
+| 自動解除の内部呼び出しに失敗した | 一般化したエラーだけをWorkerログへ出力。管理者がDiscord標準UIで解除する |
 
 ## 開発者向けセットアップ
 
@@ -169,7 +200,7 @@ Cloudflare Workersへソースコードから直接デプロイする場合は�
 npm install
 ```
 
-`wrangler.toml` の `DISCORD_APPLICATION_ID` と `LOG_CHANNEL_ID` を実際の値へ変更し、秘密情報を登録します。
+ランタイム変数はCloudflare DashboardまたはWranglerで設定します。`wrangler.toml` にBot Tokenなどの実値を書き込まないでください。秘密情報をWranglerで登録する場合は次を実行します。
 
 ```bash
 npx wrangler secret put DISCORD_PUBLIC_KEY
@@ -203,7 +234,9 @@ Xカードのランダム遅延も同じファイルで変更できます。
 - `X_CARD_DELAY_MIN_MS`: 最短待機時間（初期値5秒）
 - `X_CARD_DELAY_MAX_MS`: 最長待機時間（初期値10秒）
 
-`main`へ反映すると、GitHub Actionsが変更を含む配布ZIPを自動生成します。
+自動解除はCloudflareの環境変数 `X_CARD_AUTO_UNMUTE_SECONDS` で変更します。コードの再ビルドは不要です。
+
+`main`へ反映すると、接続済みのCloudflare Workers Buildsが変更を自動デプロイします。GitHub Actionsは型チェック、テスト、デプロイ可能性の検証だけを行います。
 
 ### ローカル開発
 
@@ -215,6 +248,7 @@ DISCORD_PUBLIC_KEY=...
 DISCORD_BOT_TOKEN=...
 LOG_CHANNEL_ID=...
 MAX_VC_MEMBERS=40
+X_CARD_AUTO_UNMUTE_SECONDS=5
 ```
 
 ```bash

@@ -4,6 +4,7 @@ export interface Env {
   DISCORD_BOT_TOKEN: string;
   LOG_CHANNEL_ID: string;
   MAX_VC_MEMBERS?: string;
+  X_CARD_AUTO_UNMUTE_SECONDS?: string;
 }
 
 export interface DiscordUser {
@@ -13,6 +14,7 @@ export interface DiscordUser {
 export interface DiscordMember {
   user: DiscordUser;
   permissions?: string;
+  roles?: string[];
 }
 
 export interface DiscordInteraction {
@@ -34,6 +36,7 @@ export interface DiscordInteraction {
 export interface VoiceState {
   user_id: string;
   channel_id: string | null;
+  mute?: boolean;
 }
 
 export interface GatewayPayload {
@@ -51,10 +54,37 @@ export interface GuildCreateData {
 export interface VoiceSnapshot {
   channelId: string;
   memberIds: string[];
+  memberIdsToMute: string[];
 }
 
 export interface MuteResult {
   attempted: number;
   succeeded: number;
   failed: number;
+  succeededMemberIds: string[];
+}
+
+export interface AutoUnmutePayload {
+  guildId: string;
+  memberIds: string[];
+  issuedAt: number;
+}
+
+export interface GuildRole {
+  id: string;
+  name: string;
+  permissions: string;
+  position: number;
+  managed: boolean;
+}
+
+export type BotReadinessReason =
+  | "ready"
+  | "missing_mute_permission"
+  | "role_too_low"
+  | "check_failed";
+
+export interface BotReadiness {
+  ready: boolean;
+  reason: BotReadinessReason;
 }
