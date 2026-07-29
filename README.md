@@ -238,15 +238,25 @@ DISCORD_BOT_TOKEN="..." \
 npm run register
 ```
 
-### タイムの理由カテゴリを変更する
+### 表示文言を変更する
 
-理由カテゴリは [`src/config.ts`](src/config.ts) の `TIME_REASONS` にまとめています。項目の追加・削除・並べ替えは、この配列だけを編集します。
+Discordへ表示する文言は [`src/messages.ts`](src/messages.ts) に一元化しています。
+
+- カードのタイトル・説明
+- ボタン名
+- タイムの理由カテゴリ
+- 成功・失敗メッセージ
+- 権限とロールの警告
+- Discord APIエラーの案内
+- `/xcard-setup` の説明
+
+タイムの理由は同ファイルの `TIME_REASONS` を編集します。
 
 - `label`: Discordに表示・投稿する文言
 - `value`: Bot内部で使う重複しない英数字
 - 最大25項目
 
-Xカードのランダム遅延も同じファイルで変更できます。
+処理時間など、動作に関する設定は [`src/config.ts`](src/config.ts) に分離しています。
 
 - `X_CARD_DELAY_MIN_MS`: 最短待機時間（初期値5秒）
 - `X_CARD_DELAY_MAX_MS`: 最長待機時間（初期値10秒）
