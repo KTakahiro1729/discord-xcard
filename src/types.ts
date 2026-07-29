@@ -77,13 +77,16 @@ export interface GuildRole {
   managed: boolean;
 }
 
-export type BotReadinessReason =
-  | "ready"
+export type BotReadinessProblem =
   | "missing_mute_permission"
   | "role_too_low"
-  | "check_failed";
+  | "bot_user_fetch_failed"
+  | "roles_fetch_failed"
+  | "bot_member_fetch_failed"
+  | "invalid_discord_response"
+  | "discord_api_unreachable";
 
 export interface BotReadiness {
   ready: boolean;
-  reason: BotReadinessReason;
+  problems: BotReadinessProblem[];
 }

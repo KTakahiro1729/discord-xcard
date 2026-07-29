@@ -25,7 +25,8 @@ import {
 } from "./security";
 import type {
   AutoUnmutePayload,
-  BotReadinessReason,
+  BotReadiness,
+  BotReadinessProblem,
   DiscordInteraction,
   Env,
   MuteResult,
@@ -37,14 +38,28 @@ const MESSAGE_COMPONENT = 3;
 const MANAGE_GUILD = 1n << 5n;
 const ADMINISTRATOR = 1n << 3n;
 
-function readinessWarning(reason: BotReadinessReason): string {
-  if (reason === "missing_mute_permission") {
-    return "⚠️ Xカードを有効化できません。Botのロールへ「メンバーをミュート」権限を付与してください。設定後に `/xcard-setup` をもう一度実行してください。";
-  }
-  if (reason === "role_too_low") {
-    return "⚠️ Xカードを有効化できません。Botのロールを、参加者へ割り当てるすべてのロールより上へ移動してください。設定後に `/xcard-setup` をもう一度実行してください。";
-  }
-  return "⚠️ Botの権限とロール位置を確認できなかったため、Xカードを実行しませんでした。管理者はBot設定を確認してください。";
+const READINESS_MESSAGES: Record<BotReadinessProblem, string> = {
+  missing_mute_permission:
+    "Botロールに「メンバーをミュート」権限がありません。",
+  role_too_low:
+    "Botロールが参加者へ割り当て可能なロール以下にあります。Botロールをすべての参加者用ロールより上へ移動してください。",
+  bot_user_fetch_failed:
+    "Bot TokenでBot情報を取得できません。Tokenが正しく、失効していないか確認してください。",
+  roles_fetch_failed:
+    "サーバーのロール一覧を取得できません。Botがこのサーバーへ追加されているか確認してください。",
+  bot_member_fetch_failed:
+    "サーバー内のBotメンバー情報を取得できません。アプリを「サーバーへ追加（Guild Install）」し直してください。",
+  invalid_discord_response:
+    "Discordから受け取ったBotまたはロール情報の形式が不正でした。時間を置いて再実行してください。",
+  discord_api_unreachable:
+    "Discord APIへ接続できませんでした。時間を置いて再実行してください。",
+};
+
+function readinessWarning(readiness: BotReadiness): string {
+  const details = readiness.problems
+    .map((problem) => `• ${READINESS_MESSAGES[problem]}`)
+    .join("\n");
+  return `⚠️ Xカードの要件を満たしていないため実行できません。\n${details}\n設定後に \`/xcard-setup\` をもう一度実行してください。`;
 }
 
 export function canSetUpCard(permissions?: string): boolean {
@@ -125,9 +140,9 @@ async function activateXCard(
     if (!readiness.ready) {
       writeLog("warn", "xcard_rejected", {
         event_id: eventId,
-        reason: readiness.reason,
+        problems: readiness.problems.join(","),
       });
-      const warning = readinessWarning(readiness.reason);
+      const warning = readinessWarning(readiness);
       await Promise.all([
         sendChannelMessage(env.DISCORD_BOT_TOKEN, publicChannelId, {
           content: warning,
@@ -263,11 +278,11 @@ async function setupSafetyCards(
   if (!readiness.ready) {
     writeLog("warn", "setup_rejected", {
       event_id: eventId,
-      reason: readiness.reason,
+      problems: readiness.problems.join(","),
     });
     await Promise.all([
       sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
-        content: readinessWarning(readiness.reason),
+        content: readinessWarning(readiness),
         allowed_mentions: { parse: [] },
       }),
       editDeferredResponse(

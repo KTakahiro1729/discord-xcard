@@ -97,7 +97,7 @@ describe("bot role readiness", () => {
   it("accepts a bot with Mute Members above assignable roles", () => {
     expect(
       evaluateBotReadiness("guild", baseRoles, ["bot-role"]),
-    ).toEqual({ ready: true, reason: "ready" });
+    ).toEqual({ ready: true, problems: [] });
   });
 
   it("rejects a bot below an assignable participant role", () => {
@@ -116,7 +116,7 @@ describe("bot role readiness", () => {
         ],
         ["bot-role"],
       ),
-    ).toEqual({ ready: false, reason: "role_too_low" });
+    ).toEqual({ ready: false, problems: ["role_too_low"] });
   });
 
   it("rejects a bot without Mute Members", () => {
@@ -125,7 +125,19 @@ describe("bot role readiness", () => {
     );
     expect(evaluateBotReadiness("guild", roles, ["bot-role"])).toEqual({
       ready: false,
-      reason: "missing_mute_permission",
+      problems: ["missing_mute_permission"],
+    });
+  });
+
+  it("reports permission and hierarchy problems together", () => {
+    const roles = baseRoles.map((role) =>
+      role.id === "bot-role"
+        ? { ...role, permissions: "0", position: 1 }
+        : role,
+    );
+    expect(evaluateBotReadiness("guild", roles, ["bot-role"])).toEqual({
+      ready: false,
+      problems: ["missing_mute_permission", "role_too_low"],
     });
   });
 });
