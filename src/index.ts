@@ -9,6 +9,7 @@ import {
   unmuteMembers,
 } from "./discord";
 import { autoUnmuteSeconds, randomXCardDelayMs } from "./config";
+import { newEventId, writeLog } from "./logging";
 import {
   deferredEphemeral,
   ephemeralMessage,
@@ -91,44 +92,23 @@ function publicNotification(
   };
 }
 
-function privateLog(
-  guildId: string,
-  channelId: string,
-  result: MuteResult,
-): Record<string, unknown> {
-  return {
-    embeds: [
-      {
-        title: "Xカード発動ログ",
-        color: result.failed === 0 ? 0x57f287 : 0xfee75c,
-        fields: [
-          { name: "サーバー", value: guildId, inline: false },
-          { name: "対象VC", value: `<#${channelId}>`, inline: true },
-          { name: "参加人数", value: String(result.attempted), inline: true },
-          { name: "成功", value: String(result.succeeded), inline: true },
-          { name: "失敗", value: String(result.failed), inline: true },
-        ],
-        footer: {
-          text: "発動者のID・名前は保存していません",
-        },
-        timestamp: new Date().toISOString(),
-      },
-    ],
-    allowed_mentions: { parse: [] },
-  };
-}
-
 async function activateXCard(
   env: Env,
   interaction: DiscordInteraction,
   workerOrigin: string,
 ): Promise<void> {
-  const muteAfter = Date.now() + randomXCardDelayMs();
+  const eventId = newEventId();
+  const startedAt = Date.now();
+  const muteAfter = startedAt + randomXCardDelayMs();
   const guildId = interaction.guild_id;
   const publicChannelId = interaction.channel_id;
   const actorId = interaction.member?.user.id;
 
   if (!guildId || !publicChannelId || !actorId) {
+    writeLog("warn", "xcard_rejected", {
+      event_id: eventId,
+      reason: "invalid_context",
+    });
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
@@ -143,6 +123,10 @@ async function activateXCard(
       guildId,
     );
     if (!readiness.ready) {
+      writeLog("warn", "xcard_rejected", {
+        event_id: eventId,
+        reason: readiness.reason,
+      });
       const warning = readinessWarning(readiness.reason);
       await Promise.all([
         sendChannelMessage(env.DISCORD_BOT_TOKEN, publicChannelId, {
@@ -165,6 +149,10 @@ async function activateXCard(
     );
 
     if (!snapshot) {
+      writeLog("info", "xcard_rejected", {
+        event_id: eventId,
+        reason: "actor_not_in_voice",
+      });
       await editDeferredResponse(
         env.DISCORD_APPLICATION_ID,
         interaction.token,
@@ -175,6 +163,12 @@ async function activateXCard(
 
     const limit = maxVcMembers(env);
     if (snapshot.memberIds.length > limit) {
+      writeLog("warn", "xcard_rejected", {
+        event_id: eventId,
+        reason: "member_limit_exceeded",
+        participant_count: snapshot.memberIds.length,
+        configured_limit: limit,
+      });
       await editDeferredResponse(
         env.DISCORD_APPLICATION_ID,
         interaction.token,
@@ -197,18 +191,21 @@ async function activateXCard(
       env.X_CARD_AUTO_UNMUTE_SECONDS,
     );
 
-    await Promise.all([
-      sendChannelMessage(
-        env.DISCORD_BOT_TOKEN,
-        publicChannelId,
-        publicNotification(snapshot.channelId, result, autoUnmuteAfter),
-      ),
-      sendChannelMessage(
-        env.DISCORD_BOT_TOKEN,
-        env.LOG_CHANNEL_ID,
-        privateLog(guildId, snapshot.channelId, result),
-      ),
-    ]);
+    const publicNoticeSent = await sendChannelMessage(
+      env.DISCORD_BOT_TOKEN,
+      publicChannelId,
+      publicNotification(snapshot.channelId, result, autoUnmuteAfter),
+    );
+
+    writeLog(result.failed === 0 && publicNoticeSent ? "info" : "warn", "xcard_mute_completed", {
+      event_id: eventId,
+      attempted: result.attempted,
+      succeeded: result.succeeded,
+      failed: result.failed,
+      public_notice_sent: publicNoticeSent,
+      auto_unmute_seconds: autoUnmuteAfter,
+      duration_ms: Date.now() - startedAt,
+    });
 
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
@@ -225,11 +222,15 @@ async function activateXCard(
         guildId,
         result.succeededMemberIds,
         autoUnmuteAfter,
+        eventId,
       );
     }
   } catch {
-    // Never include interaction data or the actor ID in runtime logs.
-    console.error("X-card activation failed");
+    writeLog("error", "xcard_failed", {
+      event_id: eventId,
+      stage: "activation",
+      duration_ms: Date.now() - startedAt,
+    });
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
@@ -242,9 +243,14 @@ async function setupSafetyCards(
   env: Env,
   interaction: DiscordInteraction,
 ): Promise<void> {
+  const eventId = newEventId();
   const guildId = interaction.guild_id;
   const channelId = interaction.channel_id;
   if (!guildId || !channelId) {
+    writeLog("warn", "setup_rejected", {
+      event_id: eventId,
+      reason: "invalid_context",
+    });
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
@@ -255,6 +261,10 @@ async function setupSafetyCards(
 
   const readiness = await checkBotReadiness(env.DISCORD_BOT_TOKEN, guildId);
   if (!readiness.ready) {
+    writeLog("warn", "setup_rejected", {
+      event_id: eventId,
+      reason: readiness.reason,
+    });
     await Promise.all([
       sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
         content: readinessWarning(readiness.reason),
@@ -274,6 +284,10 @@ async function setupSafetyCards(
     channelId,
     safetyCardPayload(),
   );
+  writeLog(sent ? "info" : "warn", "setup_completed", {
+    event_id: eventId,
+    card_sent: sent,
+  });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
@@ -289,6 +303,7 @@ async function scheduleAutoUnmute(
   guildId: string,
   memberIds: string[],
   delaySeconds: number,
+  eventId: string,
 ): Promise<void> {
   await new Promise((resolve) =>
     setTimeout(resolve, delaySeconds * 1000),
@@ -316,9 +331,12 @@ async function scheduleAutoUnmute(
     },
   );
 
-  if (!response.ok) {
-    console.error("Automatic unmute dispatch failed");
-  }
+  writeLog(response.ok ? "info" : "error", "auto_unmute_dispatched", {
+    event_id: eventId,
+    member_count: memberIds.length,
+    delay_seconds: delaySeconds,
+    response_status: response.status,
+  });
   await response.body?.cancel();
 }
 
@@ -346,8 +364,13 @@ async function handleAutoUnmute(
   env: Env,
   context: ExecutionContext,
 ): Promise<Response> {
+  const eventId = newEventId();
   const contentLength = Number(request.headers.get("Content-Length") ?? "0");
   if (contentLength > 20_000) {
+    writeLog("warn", "internal_request_rejected", {
+      event_id: eventId,
+      reason: "payload_too_large",
+    });
     return new Response("Payload Too Large", { status: 413 });
   }
 
@@ -362,6 +385,10 @@ async function handleAutoUnmute(
     env.DISCORD_BOT_TOKEN,
   );
   if (!validSignature) {
+    writeLog("warn", "internal_request_rejected", {
+      event_id: eventId,
+      reason: "invalid_signature",
+    });
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -382,12 +409,18 @@ async function handleAutoUnmute(
       payload.memberIds,
     )
       .then((result) => {
-        if (result.failed > 0) {
-          console.error("Automatic unmute partially failed");
-        }
+        writeLog(result.failed === 0 ? "info" : "warn", "auto_unmute_completed", {
+          event_id: eventId,
+          attempted: result.attempted,
+          succeeded: result.succeeded,
+          failed: result.failed,
+        });
       })
       .catch(() => {
-        console.error("Automatic unmute failed");
+        writeLog("error", "auto_unmute_failed", {
+          event_id: eventId,
+          stage: "discord_api",
+        });
       }),
   );
   return new Response(null, { status: 202 });
@@ -420,9 +453,10 @@ async function postTime(
     allowed_mentions: { parse: [] },
   });
 
-  if (!sent) {
-    console.error("Time post failed");
-  }
+  writeLog(sent ? "info" : "warn", "time_post_completed", {
+    event_id: newEventId(),
+    posted: sent,
+  });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
@@ -442,10 +476,12 @@ async function handleInteraction(
     context.waitUntil(
       registerSetupCommand(env)
         .then((registered) => {
-          if (!registered) console.error("Setup command registration failed");
+          writeLog(registered ? "info" : "warn", "command_registration_completed", {
+            registered,
+          });
         })
         .catch(() => {
-          console.error("Setup command registration failed");
+          writeLog("error", "command_registration_failed");
         }),
     );
     return jsonResponse({ type: 1 });
@@ -521,6 +557,10 @@ export default {
       env.DISCORD_PUBLIC_KEY,
     );
     if (!valid) {
+      writeLog("warn", "request_rejected", {
+        event_id: newEventId(),
+        reason: "invalid_discord_signature",
+      });
       return new Response("Invalid request signature", { status: 401 });
     }
 
