@@ -10,6 +10,7 @@ import {
 } from "./discord";
 import { autoUnmuteSeconds, randomXCardDelayMs } from "./config";
 import { newEventId, writeLog } from "./logging";
+import { MESSAGES } from "./messages";
 import {
   deferredEphemeral,
   ephemeralMessage,
@@ -25,12 +26,9 @@ import {
 } from "./security";
 import type {
   AutoUnmutePayload,
-  BotReadiness,
-  BotReadinessProblem,
   DiscordInteraction,
   Env,
   MuteResult,
-  SendMessageResult,
 } from "./types";
 
 const INTERACTION_PING = 1;
@@ -38,60 +36,6 @@ const APPLICATION_COMMAND = 2;
 const MESSAGE_COMPONENT = 3;
 const MANAGE_GUILD = 1n << 5n;
 const ADMINISTRATOR = 1n << 3n;
-
-const READINESS_MESSAGES: Record<BotReadinessProblem, string> = {
-  missing_mute_permission:
-    "Botロールに「メンバーをミュート」権限がありません。",
-  role_too_low:
-    "Botロールが参加者へ割り当て可能なロール以下にあります。Botロールをすべての参加者用ロールより上へ移動してください。",
-  bot_user_fetch_failed:
-    "Bot TokenでBot情報を取得できません。Tokenが正しく、失効していないか確認してください。",
-  roles_fetch_failed:
-    "サーバーのロール一覧を取得できません。Botがこのサーバーへ追加されているか確認してください。",
-  bot_member_fetch_failed:
-    "サーバー内のBotメンバー情報を取得できません。アプリを「サーバーへ追加（Guild Install）」し直してください。",
-  invalid_discord_response:
-    "Discordから受け取ったBotまたはロール情報の形式が不正でした。時間を置いて再実行してください。",
-  discord_api_unreachable:
-    "Discord APIへ接続できませんでした。時間を置いて再実行してください。",
-};
-
-function readinessWarning(readiness: BotReadiness): string {
-  const details = readiness.problems
-    .map((problem) => `• ${READINESS_MESSAGES[problem]}`)
-    .join("\n");
-  return `⚠️ Xカードの要件を満たしていないため実行できません。\n${details}\n設定後に \`/xcard-setup\` をもう一度実行してください。`;
-}
-
-export function messageSendFailure(result: SendMessageResult): string {
-  const reference = `HTTP ${result.status}${result.code === undefined ? "" : ` / Discord code ${result.code}`}`;
-
-  if (result.status === 401) {
-    return `Bot Tokenが無効または失効しています。Cloudflareの DISCORD_BOT_TOKEN を再設定してください。（${reference}）`;
-  }
-  if (result.code === 10003 || result.status === 404) {
-    return `対象チャンネルが削除されているか、Botから見えません。対象チャンネルで「チャンネルを見る」を許可してください。（${reference}）`;
-  }
-  if (result.code === 50001) {
-    return `Botが対象チャンネルへアクセスできません。カテゴリとチャンネルの権限上書きで「チャンネルを見る」を許可してください。（${reference}）`;
-  }
-  if (result.code === 50013 || result.status === 403) {
-    return `対象チャンネルでBotに必要な権限がありません。「チャンネルを見る」「メッセージを送信」「埋め込みリンク」を許可してください。スレッドでは「スレッドでメッセージを送信」も必要です。（${reference}）`;
-  }
-  if (result.status === 429) {
-    return `Discord APIのレート制限に達しました。少し待ってから再実行してください。（${reference}）`;
-  }
-  if (result.code === 50035 || result.status === 400) {
-    const field = result.errorPath
-      ? ` 不正と判定された項目: ${result.errorPath}。`
-      : "";
-    return `Botが送信したカードデータをDiscordが受理しませんでした。${field}Botのバージョンを確認してください。（${reference}）`;
-  }
-  if (result.status >= 500) {
-    return `Discord APIで一時障害が発生しています。時間を置いて再実行してください。（${reference}）`;
-  }
-  return `Discordへの投稿に失敗しました。Cloudflare Workers Logsで setup_completed を確認してください。（${reference}）`;
-}
 
 export function canSetUpCard(permissions?: string): boolean {
   if (!permissions) return false;
@@ -110,24 +54,24 @@ function publicNotification(
 ): Record<string, unknown> {
   const releaseNotice =
     autoUnmuteAfter === 0
-      ? "必要な確認が終わったら、Discordの標準操作でサーバーミュートを解除してください。"
-      : `約${autoUnmuteAfter}秒後にBotが自動解除します。`;
-  const description =
-    result.failed === 0
-      ? `このVCでXカードが使用されました。${releaseNotice}`
-      : `このVCでXカードが使用されました。${result.failed}名のミュートに失敗しました。${releaseNotice}`;
+      ? MESSAGES.manualUnmuteNotice
+      : MESSAGES.automaticUnmuteNotice(autoUnmuteAfter);
+  const description = MESSAGES.xCardPublicDescription(
+    result.failed,
+    releaseNotice,
+  );
 
   return {
     embeds: [
       {
-        title: "Xカードが使用されました",
+        title: MESSAGES.xCardPublicTitle,
         description,
         color: 0xd83c3e,
         fields: [
-          { name: "対象VC", value: `<#${channelId}>`, inline: true },
+          { name: MESSAGES.targetVoiceField, value: `<#${channelId}>`, inline: true },
           {
-            name: "ミュート",
-            value: `${result.succeeded}/${result.attempted}名`,
+            name: MESSAGES.muteField,
+            value: MESSAGES.muteCount(result.succeeded, result.attempted),
             inline: true,
           },
         ],
@@ -158,7 +102,7 @@ async function activateXCard(
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
-      "このボタンはサーバー内でのみ使用できます。",
+      MESSAGES.buttonServerOnly,
     );
     return;
   }
@@ -173,7 +117,7 @@ async function activateXCard(
         event_id: eventId,
         problems: readiness.problems.join(","),
       });
-      const warning = readinessWarning(readiness);
+      const warning = MESSAGES.readinessWarning(readiness.problems);
       await Promise.all([
         sendChannelMessage(env.DISCORD_BOT_TOKEN, publicChannelId, {
           content: warning,
@@ -182,7 +126,7 @@ async function activateXCard(
         editDeferredResponse(
           env.DISCORD_APPLICATION_ID,
           interaction.token,
-          "Botの権限またはロール位置が要件を満たしていないため、Xカードを実行しませんでした。",
+          MESSAGES.xCardReadinessRejected,
         ),
       ]);
       return;
@@ -202,7 +146,7 @@ async function activateXCard(
       await editDeferredResponse(
         env.DISCORD_APPLICATION_ID,
         interaction.token,
-        "VCに参加している状態で押してください。",
+        MESSAGES.actorNotInVoice,
       );
       return;
     }
@@ -218,7 +162,7 @@ async function activateXCard(
       await editDeferredResponse(
         env.DISCORD_APPLICATION_ID,
         interaction.token,
-        `このVCの参加者数が安全上限（${limit}名）を超えています。管理者に連絡してください。`,
+        MESSAGES.memberLimitExceeded(limit),
       );
       return;
     }
@@ -259,9 +203,11 @@ async function activateXCard(
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
-      result.failed === 0
-        ? `${result.succeeded}名をサーバーミュートしました。${autoUnmuteAfter === 0 ? "自動解除は無効です。" : `約${autoUnmuteAfter}秒後に自動解除します。`}あなたの名前は記録されていません。`
-        : `${result.succeeded}名をミュートしましたが、${result.failed}名に失敗しました。${autoUnmuteAfter === 0 ? "自動解除は無効です。" : `成功したメンバーは約${autoUnmuteAfter}秒後に自動解除します。`}あなたの名前は記録されていません。`,
+      MESSAGES.xCardActorResult(
+        result.succeeded,
+        result.failed,
+        autoUnmuteAfter,
+      ),
     );
 
     if (autoUnmuteAfter > 0 && result.succeededMemberIds.length > 0) {
@@ -283,7 +229,7 @@ async function activateXCard(
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
-      "Xカードの処理に失敗しました。管理者に連絡してください。",
+      MESSAGES.xCardFailed,
     );
   }
 }
@@ -303,7 +249,7 @@ async function setupSafetyCards(
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
-      "このコマンドはサーバー内でのみ使用できます。",
+      MESSAGES.commandServerOnly,
     );
     return;
   }
@@ -316,13 +262,13 @@ async function setupSafetyCards(
     });
     await Promise.all([
       sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
-        content: readinessWarning(readiness),
+        content: MESSAGES.readinessWarning(readiness.problems),
         allowed_mentions: { parse: [] },
       }),
       editDeferredResponse(
         env.DISCORD_APPLICATION_ID,
         interaction.token,
-        "Botの設定が要件を満たしていないため、カードを設置しませんでした。",
+        MESSAGES.setupReadinessRejected,
       ),
     ]);
     return;
@@ -344,8 +290,8 @@ async function setupSafetyCards(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
     sendResult.ok
-      ? "セーフティカードを設置しました。"
-      : `カードを設置できませんでした。\n${messageSendFailure(sendResult)}`,
+      ? MESSAGES.setupSucceeded
+      : MESSAGES.setupFailed(MESSAGES.messageSendFailure(sendResult)),
   );
 }
 
@@ -488,7 +434,7 @@ async function postTime(
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
-      "このボタンはサーバー内でのみ使用できます。",
+      MESSAGES.buttonServerOnly,
     );
     return;
   }
@@ -496,7 +442,7 @@ async function postTime(
   const sendResult = await sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
     embeds: [
       {
-        title: "⏱ タイム",
+        title: MESSAGES.timeButtonLabel,
         description: reason,
         color: 0xfee75c,
         timestamp: new Date().toISOString(),
@@ -516,8 +462,8 @@ async function postTime(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
     sendResult.ok
-      ? "タイムを匿名で投稿しました。あなたの名前は記録されていません。"
-      : `タイムの投稿に失敗しました。\n${messageSendFailure(sendResult)}`,
+      ? MESSAGES.timePostSucceeded
+      : MESSAGES.timePostFailed(MESSAGES.messageSendFailure(sendResult)),
   );
 }
 
@@ -547,7 +493,7 @@ async function handleInteraction(
     interaction.data?.name === "xcard-setup"
   ) {
     if (!canSetUpCard(interaction.member?.permissions)) {
-      return ephemeralMessage("この操作には「サーバー管理」権限が必要です。");
+      return ephemeralMessage(MESSAGES.manageGuildRequired);
     }
     context.waitUntil(setupSafetyCards(env, interaction));
     return deferredEphemeral();
@@ -567,7 +513,7 @@ async function handleInteraction(
   ) {
     const reason = timeReasonLabel(interaction.data.values?.[0]);
     if (!reason) {
-      return ephemeralMessage("理由カテゴリを選び直してください。");
+      return ephemeralMessage(MESSAGES.chooseReasonAgain);
     }
     context.waitUntil(postTime(env, interaction, reason));
     return deferredEphemeral();
@@ -581,7 +527,7 @@ async function handleInteraction(
     return deferredEphemeral();
   }
 
-  return ephemeralMessage("未対応の操作です。");
+  return ephemeralMessage(MESSAGES.unsupportedInteraction);
 }
 
 export default {

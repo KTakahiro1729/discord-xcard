@@ -1,3 +1,4 @@
+import { MESSAGES } from "./messages";
 import type {
   BotReadiness,
   Env,
@@ -108,7 +109,7 @@ export async function registerSetupCommand(env: Env): Promise<boolean> {
       method: "POST",
       body: JSON.stringify({
         name: "xcard-setup",
-        description: "このチャンネルに匿名セーフティカードを設置します",
+        description: MESSAGES.setupCommandDescription,
         type: 1,
         dm_permission: false,
         default_member_permissions: "32",
