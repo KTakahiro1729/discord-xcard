@@ -7,3 +7,7 @@ keep_vars = true
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+[observability.logs]
+# リクエスト単位の実行ログと、コード内の構造化ログを保存する。
+invocation_logs = true
