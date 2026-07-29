@@ -109,6 +109,8 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 保存後、WorkerのURLをもう一度開き、正常に応答することを確認します。今後 `main` が更新されると、Cloudflare Workers Buildsが自動的にビルドとデプロイを行います。
 
+以前のバージョンから更新する場合、`LOG_CHANNEL_ID` は使われなくなったためCloudflareのVariablesから削除できます。Discord側の非公開ログチャンネルも不要です。必要な過去ログを確認してから、管理者の判断で削除してください。
+
 ### 4. Discordと接続する
 
 1. Cloudflareの `Deployments` に表示されたURLを開く
