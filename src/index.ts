@@ -547,7 +547,7 @@ async function postTime(
           {
             title: MESSAGES.timeButtonLabel,
             description: reason,
-            color: 0xfee75c,
+            color: 0x95a5a6,
             timestamp: new Date().toISOString(),
           },
         ],
