@@ -37,6 +37,11 @@ export const READINESS_MESSAGES: Record<BotReadinessProblem, string> = {
 export const MESSAGES = {
   setupCommandDescription:
     "このチャンネルに匿名セーフティカードを設置します",
+  setupAutoUnmuteDescription: "Xカードの自動解除秒数（0で無効）",
+  setupDelayMinDescription: "Xカード発火までのランダム遅延・最短秒",
+  setupDelayMaxDescription: "Xカード発火までのランダム遅延・最長秒",
+  setupTimeLabelDescription: "タイムボタンの表示名",
+  setupXCardLabelDescription: "Xカードボタンの表示名",
 
   timeReasonPrompt:
     "匿名で通告する理由カテゴリを1つ選んでください。",
@@ -62,7 +67,7 @@ export const MESSAGES = {
     "Xカードの処理に失敗しました。管理者に連絡してください。",
   setupSucceeded: "セーフティカードを設置しました。",
   setupSettingsInvalid:
-    "設定値が不正です。ランダム遅延は0〜20秒で、最短を最長以下にしてください。自動解除は0〜10秒です。",
+    "設定値が不正です。ランダム遅延は0〜20秒で、最短を最長以下にしてください。自動解除は0〜10秒、ボタン名は1〜80文字です。",
   cardSettingsField: "カード設定",
   cardSettingsSummary: (
     autoUnmuteSeconds: number,
