@@ -338,9 +338,9 @@ async function setupSafetyCards(
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
-    sent
+    sendResult.ok
       ? "セーフティカードを設置しました。"
-      : "カードを設置できませんでした。Botの送信権限を確認してください。",
+      : `カードを設置できませんでした。\n${messageSendFailure(sendResult)}`,
   );
 }
 
