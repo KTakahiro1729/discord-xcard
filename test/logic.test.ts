@@ -329,7 +329,7 @@ describe("configuration", () => {
     expect(payload.embeds[0]?.fields[0]?.value).toBe("設定");
   });
 
-  it("mentions only current VC participants", () => {
+  it("mentions only current VC participants for X-card notices", () => {
     expect(participantMentionPayload(["123", "456"])).toEqual({
       content: "<@123> <@456>",
       allowed_mentions: { parse: [], users: ["123", "456"] },
