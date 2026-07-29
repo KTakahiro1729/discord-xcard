@@ -88,7 +88,7 @@ export function safetyCardPayload(
         components: [
           {
             type: 2,
-            style: 1,
+            style: 2,
             custom_id: "time:choose",
             label: options.timeButtonLabel,
             emoji: { name: "⏱️" },
