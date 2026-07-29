@@ -32,7 +32,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 2. Workerが5〜10秒後のランダムな発火時刻を決める
 3. Discord Gatewayへ一時的に接続し、発動者が参加しているVCを特定する
 4. 発火時刻まで待ち、そのVCにいた全員をサーバーミュートする
-5. 公開チャンネルと非公開ログチャンネルへ、Bot名義で結果を通知する
+5. 公開チャンネルへ結果を通知し、個人を識別しない処理結果をCloudflare Workers Logsへ記録する
 6. 設定時間後、今回Botがミュートできたメンバーだけを自動解除する
 7. Gateway接続を終了する
 
@@ -46,7 +46,6 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
   - メッセージを送信
   - 埋め込みリンク
   - メンバーをミュート
-  - メッセージ履歴を読む
 
 > [!IMPORTANT]
 > Botのロールは、参加者へ割り当てるすべてのロールより上に配置してください。また、Botのロールへ「メンバーをミュート」権限を付与してください。このBotは安全側へ倒すため、Discordの最低要件より保守的にこの条件を必須とします。
@@ -69,16 +68,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 `GUILD_VOICE_STATES` は非特権Intentのため、Developer Portalで個別に有効化する必要はありません。
 
-### 2. 非公開ログチャンネルを作成する
-
-1. `#x-card-log` などのテキストチャンネルを作る
-2. 通常メンバーの「チャンネルを見る」を拒否する
-3. Botと管理者には閲覧と送信を許可する
-4. チャンネルIDをコピーする
-
-チャンネルIDは、Discordの開発者モードを有効にすると右クリックメニューからコピーできます。
-
-### 3. GitHubリポジトリをCloudflareへ接続する
+### 2. GitHubリポジトリをCloudflareへ接続する
 
 1. [Cloudflare Dashboard](https://dash.cloudflare.com/) を開く
 2. `Workers & Pages` → `Create application` を選ぶ
@@ -102,14 +92,13 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 >
 > Git連携には対象リポジトリへのアクセス権が必要です。第三者へ配布する場合は、このリポジトリを公開するか、利用者自身がアクセス可能なコピーを用意する必要があります。
 
-### 4. 環境変数を設定する
+### 3. 環境変数を設定する
 
-作成したWorkerで `Settings` → `Variables & Secrets` を開き、Production環境に必須の5項目を追加します。自動解除時間は任意で追加できます。ビルド時の変数ではなく、Workerのランタイム変数として設定してください。
+作成したWorkerで `Settings` → `Variables & Secrets` を開き、Production環境に必須の4項目を追加します。自動解除時間は任意で追加できます。ビルド時の変数ではなく、Workerのランタイム変数として設定してください。
 
 | 名前 | 種類 | 値 |
 |---|---|---|
 | `DISCORD_APPLICATION_ID` | Text | DiscordのApplication ID |
-| `LOG_CHANNEL_ID` | Text | 手順2で作成したログチャンネルのID |
 | `MAX_VC_MEMBERS` | Text | `40` |
 | `DISCORD_PUBLIC_KEY` | Secret | DiscordのPublic Key |
 | `DISCORD_BOT_TOKEN` | Secret | DiscordのBot Token |
@@ -120,7 +109,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 保存後、WorkerのURLをもう一度開き、正常に応答することを確認します。今後 `main` が更新されると、Cloudflare Workers Buildsが自動的にビルドとデプロイを行います。
 
-### 5. Discordと接続する
+### 4. Discordと接続する
 
 1. Cloudflareの `Deployments` に表示されたURLを開く
 2. `Discord X-card Worker is running.` と表示されることを確認する
@@ -130,7 +119,7 @@ Discord のボイスチャットで使える、匿名のタイム／Xカード�
 
 Discordから送られる接続確認を受けると、Workerが `/xcard-setup` を自動登録します。Discordに表示されるまで数分かかることがあります。
 
-### 6. カードを設置する
+### 5. カードを設置する
 
 Xカード用のチャンネルで、サーバー管理権限を持つユーザーが次のコマンドを実行します。
 
@@ -157,8 +146,9 @@ Xカード用のチャンネルで、サーバー管理権限を持つユーザ�
 このBotが保証する範囲:
 
 - 公開メッセージに発動者を表示しない
-- 非公開ログに発動者を保存しない
-- WorkerのアプリケーションログにInteraction本文を出力しない
+- Discord内に非公開ログチャンネルを作成せず、発動履歴を投稿しない
+- Workers Logsに発動者ID、名前、Interaction本文、VC・チャンネル・メンバーID、タイムの理由カテゴリを出力しない
+- Workers Logsにはランダムな処理ID、成否、件数、処理時間、一般化した失敗理由だけを構造化して出力する
 - Discordの監査ログでは、操作主体がBotとして記録される
 
 保証できない範囲:
@@ -166,6 +156,27 @@ Xカード用のチャンネルで、サーバー管理権限を持つユーザ�
 - Discord社に対する匿名性
 - 発動時刻やVC参加者から発動者を推測される可能性
 - Cloudflareの実行中メモリに対する完全な不可視性
+- Cloudflareアカウントの管理者に対する処理時刻や集計結果の不可視性
+
+## Cloudflareでログを確認する
+
+Discord内のログチャンネルは使用しません。Cloudflare Dashboardで `Workers & Pages` → `discord-x-card` → `Observability` → `Logs` を開くと、保存済みログを検索できます。`Logs` → `Live` ではリアルタイムログを確認できます。
+
+主なイベント:
+
+| イベント | 内容 |
+|---|---|
+| `xcard_mute_completed` | ミュートの試行・成功・失敗人数、公開通知の成否、処理時間 |
+| `xcard_rejected` | VC未参加、人数上限、権限・ロール不備などの一般化した中止理由 |
+| `auto_unmute_dispatched` | 自動解除処理の受付結果 |
+| `auto_unmute_completed` | 自動解除の試行・成功・失敗人数 |
+| `setup_completed` / `setup_rejected` | カード設置の成否 |
+| `time_post_completed` | タイム投稿の成否。理由カテゴリは記録しない |
+| `request_rejected` | Discord署名検証に失敗したリクエスト |
+
+すべてJSONオブジェクトとして記録されるため、Cloudflare上で `event`、`failed`、`reason` などを条件に絞り込めます。各操作にはランダムな `event_id` を付けますが、Discordユーザーとの対応情報は保存しません。
+
+Workers無料プランの保存ログは最大3日間です。長期的な監査記録ではなく、障害調査と権限設定の確認を目的とします。
 
 ## 制限事項
 
@@ -187,7 +198,7 @@ Xカード用のチャンネルで、サーバー管理権限を持つユーザ�
 | 発動者がVCにいない | 発動者だけにエラーを表示 |
 | Botに「メンバーをミュート」権限がない | カード設置またはX実行を中止し、チャンネルへ公開警告を表示 |
 | Botのロールが参加者用ロール以下にある | カード設置またはX実行を中止し、ロールを上へ移動するよう公開警告を表示 |
-| VC固有の権限などにより一部処理できない | 公開通知と管理ログに失敗人数を表示 |
+| VC固有の権限などにより一部処理できない | 公開通知とCloudflare Workers Logsに失敗人数を記録 |
 | GatewayからVC情報を取得できない | 発動者だけに一般化したエラーを表示 |
 | ボタンが重複して押された | 各Xを独立処理する。通知は重複し、先の自動解除が後のミュートを早めに解除する場合がある |
 | 自動解除の内部呼び出しに失敗した | 一般化したエラーだけをWorkerログへ出力。管理者がDiscord標準UIで解除する |
@@ -210,7 +221,7 @@ npm test
 npm run deploy
 ```
 
-表示された `workers.dev` のURLを、Discord Developer Portalの `Interactions Endpoint URL` に設定してください。接続確認時にコマンドが自動登録されます。カードの設置方法は「かんたんセットアップ」の手順6と同じです。
+表示された `workers.dev` のURLを、Discord Developer Portalの `Interactions Endpoint URL` に設定してください。接続確認時にコマンドが自動登録されます。カードの設置方法は「かんたんセットアップ」の手順5と同じです。
 
 コマンドが長時間表示されない場合は、手動登録も利用できます。
 
@@ -246,7 +257,6 @@ Git管理対象外の `.dev.vars` を作成します。
 DISCORD_APPLICATION_ID=...
 DISCORD_PUBLIC_KEY=...
 DISCORD_BOT_TOKEN=...
-LOG_CHANNEL_ID=...
 MAX_VC_MEMBERS=40
 X_CARD_AUTO_UNMUTE_SECONDS=5
 ```
