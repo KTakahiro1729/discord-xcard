@@ -22,6 +22,7 @@ export function evaluateBotReadiness(
   roles: GuildRole[],
   botRoleIds: string[],
 ): BotReadiness {
+  const problems: BotReadiness["problems"] = [];
   const botRoleSet = new Set(botRoleIds);
   const botRoles = roles.filter((role) => botRoleSet.has(role.id));
   const botHighestPosition = Math.max(
@@ -36,7 +37,7 @@ export function evaluateBotReadiness(
     (permissions & ADMINISTRATOR) === 0n &&
     (permissions & MUTE_MEMBERS) === 0n
   ) {
-    return { ready: false, reason: "missing_mute_permission" };
+    problems.push("missing_mute_permission");
   }
 
   const higherAssignableRoleExists = roles.some(
@@ -47,10 +48,10 @@ export function evaluateBotReadiness(
       role.position >= botHighestPosition,
   );
   if (higherAssignableRoleExists) {
-    return { ready: false, reason: "role_too_low" };
+    problems.push("role_too_low");
   }
 
-  return { ready: true, reason: "ready" };
+  return { ready: problems.length === 0, problems };
 }
 
 export async function checkBotReadiness(
@@ -63,10 +64,12 @@ export async function checkBotReadiness(
     });
     if (!userResponse.ok) {
       await userResponse.body?.cancel();
-      return { ready: false, reason: "check_failed" };
+      return { ready: false, problems: ["bot_user_fetch_failed"] };
     }
     const user = (await userResponse.json()) as { id?: string };
-    if (!user.id) return { ready: false, reason: "check_failed" };
+    if (!user.id) {
+      return { ready: false, problems: ["invalid_discord_response"] };
+    }
 
     const [rolesResponse, memberResponse] = await Promise.all([
       discordApi(token, `/guilds/${guildId}/roles`, { method: "GET" }),
@@ -74,22 +77,25 @@ export async function checkBotReadiness(
         method: "GET",
       }),
     ]);
-    if (!rolesResponse.ok || !memberResponse.ok) {
+    const fetchProblems: BotReadiness["problems"] = [];
+    if (!rolesResponse.ok) fetchProblems.push("roles_fetch_failed");
+    if (!memberResponse.ok) fetchProblems.push("bot_member_fetch_failed");
+    if (fetchProblems.length > 0) {
       await Promise.all([
         rolesResponse.body?.cancel(),
         memberResponse.body?.cancel(),
       ]);
-      return { ready: false, reason: "check_failed" };
+      return { ready: false, problems: fetchProblems };
     }
 
     const roles = (await rolesResponse.json()) as GuildRole[];
     const member = (await memberResponse.json()) as { roles?: string[] };
     if (!Array.isArray(roles) || !Array.isArray(member.roles)) {
-      return { ready: false, reason: "check_failed" };
+      return { ready: false, problems: ["invalid_discord_response"] };
     }
     return evaluateBotReadiness(guildId, roles, member.roles);
   } catch {
-    return { ready: false, reason: "check_failed" };
+    return { ready: false, problems: ["discord_api_unreachable"] };
   }
 }
 
