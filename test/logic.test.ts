@@ -16,7 +16,8 @@ import {
   autoUnmuteSeconds,
   randomXCardDelayMs,
 } from "../src/config";
-import { canSetUpCard, messageSendFailure } from "../src/index";
+import { canSetUpCard } from "../src/index";
+import { MESSAGES, TIME_REASONS } from "../src/messages";
 import { writeLog } from "../src/logging";
 import {
   signInternalRequest,
@@ -205,11 +206,11 @@ describe("Discord message failures", () => {
   });
 
   it("gives actionable messages for permission, token, and service failures", () => {
-    expect(messageSendFailure({ ok: false, status: 403, code: 50013 }))
+    expect(MESSAGES.messageSendFailure({ ok: false, status: 403, code: 50013 }))
       .toContain("メッセージを送信");
-    expect(messageSendFailure({ ok: false, status: 401 }))
+    expect(MESSAGES.messageSendFailure({ ok: false, status: 401 }))
       .toContain("DISCORD_BOT_TOKEN");
-    expect(messageSendFailure({ ok: false, status: 503 }))
+    expect(MESSAGES.messageSendFailure({ ok: false, status: 503 }))
       .toContain("一時障害");
   });
 });
@@ -246,6 +247,14 @@ describe("server mute changes", () => {
         }),
       }),
     );
+  });
+});
+
+describe("centralized messages", () => {
+  it("keeps user-facing labels and Time reasons in one module", () => {
+    expect(MESSAGES.safetyCardTitle).toBe("セーフティカード");
+    expect(MESSAGES.xCardButtonLabel).toBe("Xカード");
+    expect(TIME_REASONS).toHaveLength(7);
   });
 });
 
