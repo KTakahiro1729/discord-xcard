@@ -382,7 +382,7 @@ describe("configuration", () => {
           value: "brief_interruption",
         },
         { label: "ペースを落としてほしい", value: "slow_down" },
-        { label: "他の人に振ってほしい", value: "pass_to_others" },
+        { label: "ほかの人の意見も聞いてみたい", value: "pass_to_others" },
         { label: "時間について確認したいことがある", value: "watch_time" },
         {
           label: "言い方を柔らかくしてほしい",
