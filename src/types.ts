@@ -56,6 +56,12 @@ export interface VoiceSnapshot {
   memberIdsToMute: string[];
 }
 
+export interface SendMessageResult {
+  ok: boolean;
+  status: number;
+  code?: number;
+}
+
 export interface MuteResult {
   attempted: number;
   succeeded: number;

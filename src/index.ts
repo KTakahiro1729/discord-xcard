@@ -30,6 +30,7 @@ import type {
   DiscordInteraction,
   Env,
   MuteResult,
+  SendMessageResult,
 } from "./types";
 
 const INTERACTION_PING = 1;
@@ -60,6 +61,33 @@ function readinessWarning(readiness: BotReadiness): string {
     .map((problem) => `• ${READINESS_MESSAGES[problem]}`)
     .join("\n");
   return `⚠️ Xカードの要件を満たしていないため実行できません。\n${details}\n設定後に \`/xcard-setup\` をもう一度実行してください。`;
+}
+
+export function messageSendFailure(result: SendMessageResult): string {
+  const reference = `HTTP ${result.status}${result.code === undefined ? "" : ` / Discord code ${result.code}`}`;
+
+  if (result.status === 401) {
+    return `Bot Tokenが無効または失効しています。Cloudflareの DISCORD_BOT_TOKEN を再設定してください。（${reference}）`;
+  }
+  if (result.code === 10003 || result.status === 404) {
+    return `対象チャンネルが削除されているか、Botから見えません。対象チャンネルで「チャンネルを見る」を許可してください。（${reference}）`;
+  }
+  if (result.code === 50001) {
+    return `Botが対象チャンネルへアクセスできません。カテゴリとチャンネルの権限上書きで「チャンネルを見る」を許可してください。（${reference}）`;
+  }
+  if (result.code === 50013 || result.status === 403) {
+    return `対象チャンネルでBotに必要な権限がありません。「チャンネルを見る」「メッセージを送信」「埋め込みリンク」を許可してください。スレッドでは「スレッドでメッセージを送信」も必要です。（${reference}）`;
+  }
+  if (result.status === 429) {
+    return `Discord APIのレート制限に達しました。少し待ってから再実行してください。（${reference}）`;
+  }
+  if (result.code === 50035 || result.status === 400) {
+    return `Botが送信したカードデータをDiscordが受理しませんでした。Botのバージョンを確認してください。（${reference}）`;
+  }
+  if (result.status >= 500) {
+    return `Discord APIで一時障害が発生しています。時間を置いて再実行してください。（${reference}）`;
+  }
+  return `Discordへの投稿に失敗しました。Cloudflare Workers Logsで setup_completed を確認してください。（${reference}）`;
 }
 
 export function canSetUpCard(permissions?: string): boolean {
@@ -206,18 +234,20 @@ async function activateXCard(
       env.X_CARD_AUTO_UNMUTE_SECONDS,
     );
 
-    const publicNoticeSent = await sendChannelMessage(
+    const publicNoticeResult = await sendChannelMessage(
       env.DISCORD_BOT_TOKEN,
       publicChannelId,
       publicNotification(snapshot.channelId, result, autoUnmuteAfter),
     );
 
-    writeLog(result.failed === 0 && publicNoticeSent ? "info" : "warn", "xcard_mute_completed", {
+    writeLog(result.failed === 0 && publicNoticeResult.ok ? "info" : "warn", "xcard_mute_completed", {
       event_id: eventId,
       attempted: result.attempted,
       succeeded: result.succeeded,
       failed: result.failed,
-      public_notice_sent: publicNoticeSent,
+      public_notice_sent: publicNoticeResult.ok,
+      public_notice_status: publicNoticeResult.status,
+      public_notice_code: publicNoticeResult.code ?? null,
       auto_unmute_seconds: autoUnmuteAfter,
       duration_ms: Date.now() - startedAt,
     });
@@ -294,21 +324,23 @@ async function setupSafetyCards(
     return;
   }
 
-  const sent = await sendChannelMessage(
+  const sendResult = await sendChannelMessage(
     env.DISCORD_BOT_TOKEN,
     channelId,
     safetyCardPayload(),
   );
-  writeLog(sent ? "info" : "warn", "setup_completed", {
+  writeLog(sendResult.ok ? "info" : "warn", "setup_completed", {
     event_id: eventId,
-    card_sent: sent,
+    card_sent: sendResult.ok,
+    response_status: sendResult.status,
+    discord_code: sendResult.code ?? null,
   });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
-    sent
+    sendResult.ok
       ? "セーフティカードを設置しました。"
-      : "カードを設置できませんでした。Botの送信権限を確認してください。",
+      : `カードを設置できませんでした。\n${messageSendFailure(sendResult)}`,
   );
 }
 
@@ -456,7 +488,7 @@ async function postTime(
     return;
   }
 
-  const sent = await sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
+  const sendResult = await sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
     embeds: [
       {
         title: "⏱ タイム",
@@ -468,16 +500,18 @@ async function postTime(
     allowed_mentions: { parse: [] },
   });
 
-  writeLog(sent ? "info" : "warn", "time_post_completed", {
+  writeLog(sendResult.ok ? "info" : "warn", "time_post_completed", {
     event_id: newEventId(),
-    posted: sent,
+    posted: sendResult.ok,
+    response_status: sendResult.status,
+    discord_code: sendResult.code ?? null,
   });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
     interaction.token,
-    sent
+    sendResult.ok
       ? "タイムを匿名で投稿しました。あなたの名前は記録されていません。"
-      : "タイムの投稿に失敗しました。管理者に連絡してください。",
+      : `タイムの投稿に失敗しました。\n${messageSendFailure(sendResult)}`,
   );
 }
 

@@ -4,6 +4,7 @@ import {
   maxVcMembers,
   muteMembers,
   registerSetupCommand,
+  sendChannelMessage,
   snapshotForUser,
   unmuteMembers,
 } from "../src/discord";
@@ -15,7 +16,7 @@ import {
   autoUnmuteSeconds,
   randomXCardDelayMs,
 } from "../src/config";
-import { canSetUpCard } from "../src/index";
+import { canSetUpCard, messageSendFailure } from "../src/index";
 import { writeLog } from "../src/logging";
 import {
   signInternalRequest,
@@ -162,6 +163,30 @@ describe("command registration", () => {
         body: expect.stringContaining('"default_member_permissions":"32"'),
       }),
     );
+  });
+});
+
+describe("Discord message failures", () => {
+  it("preserves the HTTP status and Discord error code", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 50013, message: "Missing Permissions" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      sendChannelMessage("token", "channel", { content: "test" }),
+    ).resolves.toEqual({ ok: false, status: 403, code: 50013 });
+  });
+
+  it("gives actionable messages for permission, token, and service failures", () => {
+    expect(messageSendFailure({ ok: false, status: 403, code: 50013 }))
+      .toContain("メッセージを送信");
+    expect(messageSendFailure({ ok: false, status: 401 }))
+      .toContain("DISCORD_BOT_TOKEN");
+    expect(messageSendFailure({ ok: false, status: 503 }))
+      .toContain("一時障害");
   });
 });
 
