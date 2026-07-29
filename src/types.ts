@@ -60,6 +60,7 @@ export interface SendMessageResult {
   ok: boolean;
   status: number;
   code?: number;
+  errorPath?: string;
 }
 
 export interface MuteResult {
