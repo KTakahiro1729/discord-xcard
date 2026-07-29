@@ -5,6 +5,7 @@ import type {
   GuildCreateData,
   GuildRole,
   MuteResult,
+  SendMessageResult,
   VoiceSnapshot,
   VoiceState,
 } from "./types";
@@ -358,7 +359,7 @@ export async function sendChannelMessage(
   token: string,
   channelId: string,
   payload: Record<string, unknown>,
-): Promise<boolean> {
+): Promise<SendMessageResult> {
   const response = await discordApi(
     token,
     `/channels/${channelId}/messages`,
@@ -367,9 +368,20 @@ export async function sendChannelMessage(
       body: JSON.stringify(payload),
     },
   );
-  const ok = response.ok;
-  await response.body?.cancel();
-  return ok;
+
+  if (response.ok) {
+    await response.body?.cancel();
+    return { ok: true, status: response.status };
+  }
+
+  let code: number | undefined;
+  try {
+    const error = (await response.json()) as { code?: unknown };
+    if (typeof error.code === "number") code = error.code;
+  } catch {
+    await response.body?.cancel();
+  }
+  return { ok: false, status: response.status, code };
 }
 
 export async function editDeferredResponse(
