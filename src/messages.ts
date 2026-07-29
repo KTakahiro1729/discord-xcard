@@ -12,7 +12,7 @@ export const TIME_REASONS = [
   { label: "一言だけ挟みたい（退席・連絡など）", value: "brief_interruption" },
   { label: "ペースを落としてほしい", value: "slow_down" },
   { label: "他の人に振ってほしい", value: "pass_to_others" },
-  { label: "時間を気にしてほしい", value: "watch_time" },
+  { label: "時間について確認したいことがある", value: "watch_time" },
   { label: "言い方を柔らかくしてほしい", value: "soften_wording" },
   { label: "理由は言わない", value: "no_reason" },
 ] as const;
