@@ -350,7 +350,7 @@ describe("configuration", () => {
     };
     expect(response.data.components[0]?.components[0]).toMatchObject({
       custom_id: "time:choose",
-      style: 1,
+      style: 2,
     });
     expect(response.data.components[0]?.components[1]).toMatchObject({
       custom_id: "xcard:activate",
@@ -383,7 +383,7 @@ describe("configuration", () => {
         },
         { label: "ペースを落としてほしい", value: "slow_down" },
         { label: "他の人に振ってほしい", value: "pass_to_others" },
-        { label: "時間を気にしてほしい", value: "watch_time" },
+        { label: "時間について確認したいことがある", value: "watch_time" },
         {
           label: "言い方を柔らかくしてほしい",
           value: "soften_wording",
@@ -391,7 +391,9 @@ describe("configuration", () => {
         { label: "理由は言わない", value: "no_reason" },
       ],
     });
-    expect(timeReasonLabel("watch_time")).toBe("時間を気にしてほしい");
+    expect(timeReasonLabel("watch_time")).toBe(
+      "時間について確認したいことがある",
+    );
     expect(timeReasonLabel("soften_wording")).toBe(
       "言い方を柔らかくしてほしい",
     );
