@@ -543,7 +543,6 @@ async function postTime(
       env.DISCORD_BOT_TOKEN,
       snapshot.channelId,
       {
-        ...participantMentionPayload(snapshot.memberIds),
         embeds: [
           {
             title: MESSAGES.timeButtonLabel,
@@ -552,6 +551,7 @@ async function postTime(
             timestamp: new Date().toISOString(),
           },
         ],
+        allowed_mentions: { parse: [] },
       },
     );
 
