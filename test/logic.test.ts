@@ -16,6 +16,7 @@ import {
   randomXCardDelayMs,
 } from "../src/config";
 import { canSetUpCard } from "../src/index";
+import { writeLog } from "../src/logging";
 import {
   signInternalRequest,
   verifyInternalRequest,
@@ -276,5 +277,31 @@ describe("internal request signing", () => {
     await expect(
       verifyInternalRequest(`${body}x`, signature, "bot-token"),
     ).resolves.toBe(false);
+  });
+});
+
+describe("structured logging", () => {
+  it("emits filterable JSON without Discord identities", () => {
+    const consoleMock = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    writeLog("info", "xcard_mute_completed", {
+      event_id: "random-event",
+      attempted: 3,
+      succeeded: 3,
+      failed: 0,
+    });
+
+    expect(consoleMock).toHaveBeenCalledWith({
+      service: "discord-xcard",
+      event: "xcard_mute_completed",
+      event_id: "random-event",
+      attempted: 3,
+      succeeded: 3,
+      failed: 0,
+    });
+    const serialized = JSON.stringify(consoleMock.mock.calls[0]?.[0]);
+    expect(serialized).not.toMatch(
+      /actor|user_id|member_id|guild_id|channel_id|interaction|token/i,
+    );
   });
 });
