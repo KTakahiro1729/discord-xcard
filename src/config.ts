@@ -1,23 +1,4 @@
 /**
- * 「タイム」で選べる理由カテゴリです。
- *
- * - label: Discordに表示・投稿される日本語
- * - value: Bot内部で使う重複しない英数字
- *
- * 項目の追加・削除・並べ替えは、この配列だけを編集してください。
- * Discordのセレクトメニュー上限は25項目です。
- */
-export const TIME_REASONS = [
-  { label: "話題を変えたい", value: "change_topic" },
-  { label: "一言だけ挟みたい（退席・連絡など）", value: "brief_interruption" },
-  { label: "ペースを落としてほしい", value: "slow_down" },
-  { label: "他の人に振ってほしい", value: "pass_to_others" },
-  { label: "時間を気にしてほしい", value: "watch_time" },
-  { label: "言い方を柔らかくしてほしい", value: "soften_wording" },
-  { label: "理由は言わない", value: "no_reason" },
-] as const;
-
-/**
  * Xカードの押下からミュート開始までのランダム遅延です。
  * 発言時刻と発動時刻の直接的な対応を少し曖昧にします。
  */
