@@ -1,4 +1,4 @@
-import { TIME_REASONS } from "./config";
+import { MESSAGES, TIME_REASONS } from "./messages";
 
 const EPHEMERAL = 1 << 6;
 
@@ -34,7 +34,7 @@ export function timeReasonMenu(): Response {
   return jsonResponse({
     type: 4,
     data: {
-      content: "匿名で通告する理由カテゴリを1つ選んでください。",
+      content: MESSAGES.timeReasonPrompt,
       flags: EPHEMERAL,
       components: [
         {
@@ -43,7 +43,7 @@ export function timeReasonMenu(): Response {
             {
               type: 3,
               custom_id: "time:reason",
-              placeholder: "理由カテゴリを選択",
+              placeholder: MESSAGES.timeReasonPlaceholder,
               min_values: 1,
               max_values: 1,
               options: TIME_REASONS,
@@ -59,9 +59,8 @@ export function safetyCardPayload(): Record<string, unknown> {
   return {
     embeds: [
       {
-        title: "セーフティカード",
-        description:
-          "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\nどちらも押した人の名前は表示・保存されません。",
+        title: MESSAGES.safetyCardTitle,
+        description: MESSAGES.safetyCardDescription,
         color: 0xd83c3e,
       },
     ],
@@ -73,14 +72,14 @@ export function safetyCardPayload(): Record<string, unknown> {
             type: 2,
             style: 1,
             custom_id: "time:choose",
-            label: "タイム",
+            label: MESSAGES.timeButtonLabel,
             emoji: { name: "⏱️" },
           },
           {
             type: 2,
             style: 4,
             custom_id: "xcard:activate",
-            label: "Xカード",
+            label: MESSAGES.xCardButtonLabel,
           },
         ],
       },
