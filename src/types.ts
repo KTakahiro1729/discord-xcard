@@ -2,7 +2,6 @@ export interface Env {
   DISCORD_APPLICATION_ID: string;
   DISCORD_PUBLIC_KEY: string;
   DISCORD_BOT_TOKEN: string;
-  LOG_CHANNEL_ID: string;
   MAX_VC_MEMBERS?: string;
   X_CARD_AUTO_UNMUTE_SECONDS?: string;
 }
