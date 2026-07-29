@@ -81,7 +81,6 @@ export function safetyCardPayload(): Record<string, unknown> {
             style: 4,
             custom_id: "xcard:activate",
             label: "Xカード",
-            emoji: { name: "✕" },
           },
         ],
       },

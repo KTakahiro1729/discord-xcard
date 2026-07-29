@@ -82,7 +82,10 @@ export function messageSendFailure(result: SendMessageResult): string {
     return `Discord APIのレート制限に達しました。少し待ってから再実行してください。（${reference}）`;
   }
   if (result.code === 50035 || result.status === 400) {
-    return `Botが送信したカードデータをDiscordが受理しませんでした。Botのバージョンを確認してください。（${reference}）`;
+    const field = result.errorPath
+      ? ` 不正と判定された項目: ${result.errorPath}。`
+      : "";
+    return `Botが送信したカードデータをDiscordが受理しませんでした。${field}Botのバージョンを確認してください。（${reference}）`;
   }
   if (result.status >= 500) {
     return `Discord APIで一時障害が発生しています。時間を置いて再実行してください。（${reference}）`;
@@ -248,6 +251,7 @@ async function activateXCard(
       public_notice_sent: publicNoticeResult.ok,
       public_notice_status: publicNoticeResult.status,
       public_notice_code: publicNoticeResult.code ?? null,
+      public_notice_error_path: publicNoticeResult.errorPath ?? null,
       auto_unmute_seconds: autoUnmuteAfter,
       duration_ms: Date.now() - startedAt,
     });
@@ -334,6 +338,7 @@ async function setupSafetyCards(
     card_sent: sendResult.ok,
     response_status: sendResult.status,
     discord_code: sendResult.code ?? null,
+    error_path: sendResult.errorPath ?? null,
   });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,
@@ -505,6 +510,7 @@ async function postTime(
     posted: sendResult.ok,
     response_status: sendResult.status,
     discord_code: sendResult.code ?? null,
+    error_path: sendResult.errorPath ?? null,
   });
   await editDeferredResponse(
     env.DISCORD_APPLICATION_ID,

@@ -355,6 +355,25 @@ async function setMemberMuteState(
   };
 }
 
+function discordValidationPaths(
+  value: unknown,
+  path: string[] = [],
+  output: string[] = [],
+): string[] {
+  if (!value || typeof value !== "object" || output.length >= 10) {
+    return output;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "_errors" && Array.isArray(child)) {
+      output.push(path.join(".") || "payload");
+      continue;
+    }
+    discordValidationPaths(child, [...path, key], output);
+  }
+  return output;
+}
+
 export async function sendChannelMessage(
   token: string,
   channelId: string,
@@ -375,13 +394,19 @@ export async function sendChannelMessage(
   }
 
   let code: number | undefined;
+  let errorPath: string | undefined;
   try {
-    const error = (await response.json()) as { code?: unknown };
+    const error = (await response.json()) as {
+      code?: unknown;
+      errors?: unknown;
+    };
     if (typeof error.code === "number") code = error.code;
+    const paths = discordValidationPaths(error.errors);
+    if (paths.length > 0) errorPath = paths.join(",");
   } catch {
     await response.body?.cancel();
   }
-  return { ok: false, status: response.status, code };
+  return { ok: false, status: response.status, code, errorPath };
 }
 
 export async function editDeferredResponse(
