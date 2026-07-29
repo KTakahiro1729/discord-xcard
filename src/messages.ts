@@ -11,8 +11,8 @@ export const TIME_REASONS = [
   { label: "話題を変えたい", value: "change_topic" },
   { label: "一言だけ挟みたい（退席・連絡など）", value: "brief_interruption" },
   { label: "ペースを落としてほしい", value: "slow_down" },
-  { label: "他の人に振ってほしい", value: "pass_to_others" },
-  { label: "時間を気にしてほしい", value: "watch_time" },
+  { label: "ほかの人の意見も聞いてみたい", value: "pass_to_others" },
+  { label: "時間について確認したいことがある", value: "watch_time" },
   { label: "言い方を柔らかくしてほしい", value: "soften_wording" },
   { label: "理由は言わない", value: "no_reason" },
 ] as const;
@@ -48,7 +48,7 @@ export const MESSAGES = {
   timeReasonPlaceholder: "理由カテゴリを選択",
   safetyCardTitle: "セーフティカード",
   safetyCardDescription:
-    "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\n通知は参加中のVCチャットへ投稿され、そのVCの参加者全員に個別メンションします。どちらも押した人の名前は表示・保存されません。",
+    "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\n通知は参加中のVCチャットへ投稿されます。Xカードだけは、そのVCの参加者全員に個別メンションします。どちらも押した人の名前は表示・保存されません。",
   timeButtonLabel: "タイム",
   xCardButtonLabel: "Xカード",
 
