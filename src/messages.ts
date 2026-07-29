@@ -54,6 +54,8 @@ export const MESSAGES = {
   setupReadinessRejected:
     "Botの設定が要件を満たしていないため、カードを設置しませんでした。",
   actorNotInVoice: "VCに参加している状態で押してください。",
+  voiceLookupFailed:
+    "参加中のVCを確認できませんでした。時間を置いて再実行してください。",
   memberLimitExceeded: (limit: number) =>
     `このVCの参加者数が安全上限（${limit}名）を超えています。管理者に連絡してください。`,
   xCardFailed:
