@@ -2,6 +2,13 @@ import { MESSAGES, TIME_REASONS } from "./messages";
 
 const EPHEMERAL = 1 << 6;
 
+export interface SafetyCardOptions {
+  xCardCustomId: string;
+  timeButtonLabel: string;
+  xCardButtonLabel: string;
+  settingsSummary?: string;
+}
+
 export function timeReasonLabel(value?: string): string | null {
   return TIME_REASONS.find((reason) => reason.value === value)?.label ?? null;
 }
@@ -55,15 +62,26 @@ export function timeReasonMenu(): Response {
   });
 }
 
-export function safetyCardPayload(): Record<string, unknown> {
+export function safetyCardPayload(
+  options: SafetyCardOptions = {
+    xCardCustomId: "xcard:activate",
+    timeButtonLabel: MESSAGES.timeButtonLabel,
+    xCardButtonLabel: MESSAGES.xCardButtonLabel,
+  },
+): Record<string, unknown> {
+  const embed: Record<string, unknown> = {
+    title: MESSAGES.safetyCardTitle,
+    description: MESSAGES.safetyCardDescription,
+    color: 0xd83c3e,
+  };
+  if (options.settingsSummary) {
+    embed.fields = [
+      { name: MESSAGES.cardSettingsField, value: options.settingsSummary },
+    ];
+  }
+
   return {
-    embeds: [
-      {
-        title: MESSAGES.safetyCardTitle,
-        description: MESSAGES.safetyCardDescription,
-        color: 0xd83c3e,
-      },
-    ],
+    embeds: [embed],
     components: [
       {
         type: 1,
@@ -72,14 +90,14 @@ export function safetyCardPayload(): Record<string, unknown> {
             type: 2,
             style: 1,
             custom_id: "time:choose",
-            label: MESSAGES.timeButtonLabel,
+            label: options.timeButtonLabel,
             emoji: { name: "⏱️" },
           },
           {
             type: 2,
             style: 4,
-            custom_id: "xcard:activate",
-            label: MESSAGES.xCardButtonLabel,
+            custom_id: options.xCardCustomId,
+            label: options.xCardButtonLabel,
           },
         ],
       },
