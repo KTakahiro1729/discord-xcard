@@ -29,6 +29,11 @@ export interface DiscordInteraction {
     custom_id?: string;
     component_type?: number;
     values?: string[];
+    options?: Array<{
+      name: string;
+      type: number;
+      value: string | number | boolean;
+    }>;
   };
 }
 
@@ -48,6 +53,12 @@ export interface GatewayPayload {
 export interface GuildCreateData {
   id: string;
   voice_states?: VoiceState[];
+}
+
+export interface XCardSettings {
+  autoUnmuteSeconds: number;
+  delayMinSeconds: number;
+  delayMaxSeconds: number;
 }
 
 export interface VoiceSnapshot {

@@ -37,13 +37,18 @@ export const READINESS_MESSAGES: Record<BotReadinessProblem, string> = {
 export const MESSAGES = {
   setupCommandDescription:
     "このチャンネルに匿名セーフティカードを設置します",
+  setupAutoUnmuteDescription: "Xカードの自動解除秒数（0で無効）",
+  setupDelayMinDescription: "Xカード発火までのランダム遅延・最短秒",
+  setupDelayMaxDescription: "Xカード発火までのランダム遅延・最長秒",
+  setupTimeLabelDescription: "タイムボタンの表示名",
+  setupXCardLabelDescription: "Xカードボタンの表示名",
 
   timeReasonPrompt:
     "匿名で通告する理由カテゴリを1つ選んでください。",
   timeReasonPlaceholder: "理由カテゴリを選択",
   safetyCardTitle: "セーフティカード",
   safetyCardDescription:
-    "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\nどちらも押した人の名前は表示・保存されません。",
+    "**⏱ タイム**: 理由カテゴリを選び、匿名で通告します。\n\n**✕ Xカード**: 会話を止める必要があるときに使用します。押した時点で参加しているVCの全員がサーバーミュートされます。\n\n通知は参加中のVCチャットへ投稿され、そのVCの参加者全員に個別メンションします。どちらも押した人の名前は表示・保存されません。",
   timeButtonLabel: "タイム",
   xCardButtonLabel: "Xカード",
 
@@ -54,11 +59,22 @@ export const MESSAGES = {
   setupReadinessRejected:
     "Botの設定が要件を満たしていないため、カードを設置しませんでした。",
   actorNotInVoice: "VCに参加している状態で押してください。",
+  voiceLookupFailed:
+    "参加中のVCを確認できませんでした。時間を置いて再実行してください。",
   memberLimitExceeded: (limit: number) =>
     `このVCの参加者数が安全上限（${limit}名）を超えています。管理者に連絡してください。`,
   xCardFailed:
     "Xカードの処理に失敗しました。管理者に連絡してください。",
   setupSucceeded: "セーフティカードを設置しました。",
+  setupSettingsInvalid:
+    "設定値が不正です。ランダム遅延は0〜20秒で、最短を最長以下にしてください。自動解除は0〜10秒、ボタン名は1〜80文字です。",
+  cardSettingsField: "カード設定",
+  cardSettingsSummary: (
+    autoUnmuteSeconds: number,
+    delayMinSeconds: number,
+    delayMaxSeconds: number,
+  ) =>
+    `自動解除: ${autoUnmuteSeconds === 0 ? "なし" : `${autoUnmuteSeconds}秒`} / ランダム遅延: ${delayMinSeconds}〜${delayMaxSeconds}秒`,
   setupFailed: (detail: string) =>
     `カードを設置できませんでした。\n${detail}`,
   timePostSucceeded:

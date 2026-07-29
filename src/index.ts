@@ -8,7 +8,12 @@ import {
   sendChannelMessage,
   unmuteMembers,
 } from "./discord";
-import { autoUnmuteSeconds, randomXCardDelayMs } from "./config";
+import {
+  randomXCardDelayMs,
+  settingsFromXCardCustomId,
+  xCardCustomId,
+  xCardSettings,
+} from "./config";
 import { newEventId, writeLog } from "./logging";
 import { MESSAGES } from "./messages";
 import {
@@ -47,8 +52,25 @@ export function canSetUpCard(permissions?: string): boolean {
   }
 }
 
+function commandOption(
+  interaction: DiscordInteraction,
+  name: string,
+): string | number | boolean | undefined {
+  return interaction.data?.options?.find((option) => option.name === name)?.value;
+}
+
+export function participantMentionPayload(
+  memberIds: string[],
+): { content: string; allowed_mentions: Record<string, unknown> } {
+  return {
+    content: memberIds.map((memberId) => `<@${memberId}>`).join(" "),
+    allowed_mentions: { parse: [], users: memberIds },
+  };
+}
+
 function publicNotification(
   channelId: string,
+  memberIds: string[],
   result: MuteResult,
   autoUnmuteAfter: number,
 ): Record<string, unknown> {
@@ -62,6 +84,7 @@ function publicNotification(
   );
 
   return {
+    ...participantMentionPayload(memberIds),
     embeds: [
       {
         title: MESSAGES.xCardPublicTitle,
@@ -78,7 +101,6 @@ function publicNotification(
         timestamp: new Date().toISOString(),
       },
     ],
-    allowed_mentions: { parse: [] },
   };
 }
 
@@ -89,7 +111,17 @@ async function activateXCard(
 ): Promise<void> {
   const eventId = newEventId();
   const startedAt = Date.now();
-  const muteAfter = startedAt + randomXCardDelayMs();
+  const settings = settingsFromXCardCustomId(
+    interaction.data?.custom_id ?? "xcard:activate",
+    env.X_CARD_AUTO_UNMUTE_SECONDS,
+  );
+  const muteAfter =
+    startedAt +
+    randomXCardDelayMs(
+      Math.random,
+      settings.delayMinSeconds * 1000,
+      settings.delayMaxSeconds * 1000,
+    );
   const guildId = interaction.guild_id;
   const publicChannelId = interaction.channel_id;
   const actorId = interaction.member?.user.id;
@@ -177,14 +209,17 @@ async function activateXCard(
       guildId,
       snapshot.memberIdsToMute,
     );
-    const autoUnmuteAfter = autoUnmuteSeconds(
-      env.X_CARD_AUTO_UNMUTE_SECONDS,
-    );
+    const autoUnmuteAfter = settings.autoUnmuteSeconds;
 
     const publicNoticeResult = await sendChannelMessage(
       env.DISCORD_BOT_TOKEN,
-      publicChannelId,
-      publicNotification(snapshot.channelId, result, autoUnmuteAfter),
+      snapshot.channelId,
+      publicNotification(
+        snapshot.channelId,
+        snapshot.memberIds,
+        result,
+        autoUnmuteAfter,
+      ),
     );
 
     writeLog(result.failed === 0 && publicNoticeResult.ok ? "info" : "warn", "xcard_mute_completed", {
@@ -254,6 +289,45 @@ async function setupSafetyCards(
     return;
   }
 
+  const autoOption = commandOption(interaction, "auto_unmute_seconds");
+  const delayMinOption = commandOption(interaction, "delay_min_seconds");
+  const delayMaxOption = commandOption(interaction, "delay_max_seconds");
+  const timeLabelOption = commandOption(interaction, "time_button_label");
+  const xCardLabelOption = commandOption(interaction, "xcard_button_label");
+  const settings = xCardSettings(
+    env.X_CARD_AUTO_UNMUTE_SECONDS,
+    typeof autoOption === "number" ? autoOption : undefined,
+    typeof delayMinOption === "number" ? delayMinOption : undefined,
+    typeof delayMaxOption === "number" ? delayMaxOption : undefined,
+  );
+  const timeButtonLabel =
+    typeof timeLabelOption === "string"
+      ? timeLabelOption.trim()
+      : MESSAGES.timeButtonLabel;
+  const xCardButtonLabel =
+    typeof xCardLabelOption === "string"
+      ? xCardLabelOption.trim()
+      : MESSAGES.xCardButtonLabel;
+
+  if (
+    !settings ||
+    timeButtonLabel.length < 1 ||
+    timeButtonLabel.length > 80 ||
+    xCardButtonLabel.length < 1 ||
+    xCardButtonLabel.length > 80
+  ) {
+    writeLog("warn", "setup_rejected", {
+      event_id: eventId,
+      reason: "invalid_settings",
+    });
+    await editDeferredResponse(
+      env.DISCORD_APPLICATION_ID,
+      interaction.token,
+      MESSAGES.setupSettingsInvalid,
+    );
+    return;
+  }
+
   const readiness = await checkBotReadiness(env.DISCORD_BOT_TOKEN, guildId);
   if (!readiness.ready) {
     writeLog("warn", "setup_rejected", {
@@ -277,7 +351,16 @@ async function setupSafetyCards(
   const sendResult = await sendChannelMessage(
     env.DISCORD_BOT_TOKEN,
     channelId,
-    safetyCardPayload(),
+    safetyCardPayload({
+      xCardCustomId: xCardCustomId(settings),
+      timeButtonLabel,
+      xCardButtonLabel,
+      settingsSummary: MESSAGES.cardSettingsSummary(
+        settings.autoUnmuteSeconds,
+        settings.delayMinSeconds,
+        settings.delayMaxSeconds,
+      ),
+    }),
   );
   writeLog(sendResult.ok ? "info" : "warn", "setup_completed", {
     event_id: eventId,
@@ -429,8 +512,10 @@ async function postTime(
   interaction: DiscordInteraction,
   reason: string,
 ): Promise<void> {
-  const channelId = interaction.channel_id;
-  if (!channelId) {
+  const eventId = newEventId();
+  const guildId = interaction.guild_id;
+  const actorId = interaction.member?.user.id;
+  if (!guildId || !actorId) {
     await editDeferredResponse(
       env.DISCORD_APPLICATION_ID,
       interaction.token,
@@ -439,32 +524,64 @@ async function postTime(
     return;
   }
 
-  const sendResult = await sendChannelMessage(env.DISCORD_BOT_TOKEN, channelId, {
-    embeds: [
-      {
-        title: MESSAGES.timeButtonLabel,
-        description: reason,
-        color: 0xfee75c,
-        timestamp: new Date().toISOString(),
-      },
-    ],
-    allowed_mentions: { parse: [] },
-  });
+  try {
+    const snapshot = await fetchVoiceSnapshot(
+      env.DISCORD_BOT_TOKEN,
+      guildId,
+      actorId,
+    );
+    if (!snapshot) {
+      await editDeferredResponse(
+        env.DISCORD_APPLICATION_ID,
+        interaction.token,
+        MESSAGES.actorNotInVoice,
+      );
+      return;
+    }
 
-  writeLog(sendResult.ok ? "info" : "warn", "time_post_completed", {
-    event_id: newEventId(),
-    posted: sendResult.ok,
-    response_status: sendResult.status,
-    discord_code: sendResult.code ?? null,
-    error_path: sendResult.errorPath ?? null,
-  });
-  await editDeferredResponse(
-    env.DISCORD_APPLICATION_ID,
-    interaction.token,
-    sendResult.ok
-      ? MESSAGES.timePostSucceeded
-      : MESSAGES.timePostFailed(MESSAGES.messageSendFailure(sendResult)),
-  );
+    const sendResult = await sendChannelMessage(
+      env.DISCORD_BOT_TOKEN,
+      snapshot.channelId,
+      {
+        ...participantMentionPayload(snapshot.memberIds),
+        embeds: [
+          {
+            title: MESSAGES.timeButtonLabel,
+            description: reason,
+            color: 0xfee75c,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      },
+    );
+
+    writeLog(sendResult.ok ? "info" : "warn", "time_post_completed", {
+      event_id: eventId,
+      posted: sendResult.ok,
+      participant_count: snapshot.memberIds.length,
+      destination: "voice_channel",
+      response_status: sendResult.status,
+      discord_code: sendResult.code ?? null,
+      error_path: sendResult.errorPath ?? null,
+    });
+    await editDeferredResponse(
+      env.DISCORD_APPLICATION_ID,
+      interaction.token,
+      sendResult.ok
+        ? MESSAGES.timePostSucceeded
+        : MESSAGES.timePostFailed(MESSAGES.messageSendFailure(sendResult)),
+    );
+  } catch {
+    writeLog("error", "time_post_failed", {
+      event_id: eventId,
+      stage: "voice_snapshot_or_send",
+    });
+    await editDeferredResponse(
+      env.DISCORD_APPLICATION_ID,
+      interaction.token,
+      MESSAGES.voiceLookupFailed,
+    );
+  }
 }
 
 async function handleInteraction(
@@ -521,7 +638,7 @@ async function handleInteraction(
 
   if (
     interaction.type === MESSAGE_COMPONENT &&
-    interaction.data?.custom_id === "xcard:activate"
+    interaction.data?.custom_id?.startsWith("xcard:activate")
   ) {
     context.waitUntil(activateXCard(env, interaction, workerOrigin));
     return deferredEphemeral();

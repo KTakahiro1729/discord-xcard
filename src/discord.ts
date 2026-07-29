@@ -1,3 +1,4 @@
+import { MAX_AUTO_UNMUTE_SECONDS, MAX_X_CARD_DELAY_SECONDS } from "./config";
 import { MESSAGES } from "./messages";
 import type {
   BotReadiness,
@@ -113,6 +114,48 @@ export async function registerSetupCommand(env: Env): Promise<boolean> {
         type: 1,
         dm_permission: false,
         default_member_permissions: "32",
+        options: [
+          {
+            type: 4,
+            name: "auto_unmute_seconds",
+            description: MESSAGES.setupAutoUnmuteDescription,
+            required: false,
+            min_value: 0,
+            max_value: MAX_AUTO_UNMUTE_SECONDS,
+          },
+          {
+            type: 4,
+            name: "delay_min_seconds",
+            description: MESSAGES.setupDelayMinDescription,
+            required: false,
+            min_value: 0,
+            max_value: MAX_X_CARD_DELAY_SECONDS,
+          },
+          {
+            type: 4,
+            name: "delay_max_seconds",
+            description: MESSAGES.setupDelayMaxDescription,
+            required: false,
+            min_value: 0,
+            max_value: MAX_X_CARD_DELAY_SECONDS,
+          },
+          {
+            type: 3,
+            name: "time_button_label",
+            description: MESSAGES.setupTimeLabelDescription,
+            required: false,
+            min_length: 1,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: "xcard_button_label",
+            description: MESSAGES.setupXCardLabelDescription,
+            required: false,
+            min_length: 1,
+            max_length: 80,
+          },
+        ],
       }),
     },
   );
