@@ -15,8 +15,11 @@ import {
   X_CARD_DELAY_MIN_MS,
   autoUnmuteSeconds,
   randomXCardDelayMs,
+  settingsFromXCardCustomId,
+  xCardCustomId,
+  xCardSettings,
 } from "../src/config";
-import { canSetUpCard } from "../src/index";
+import { canSetUpCard, participantMentionPayload } from "../src/index";
 import { MESSAGES, TIME_REASONS } from "../src/messages";
 import { writeLog } from "../src/logging";
 import {
@@ -25,6 +28,7 @@ import {
 } from "../src/security";
 import {
   safetyCardMessage,
+  safetyCardPayload,
   timeReasonLabel,
   timeReasonMenu,
 } from "../src/responses";
@@ -164,6 +168,17 @@ describe("command registration", () => {
         body: expect.stringContaining('"default_member_permissions":"32"'),
       }),
     );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as {
+      options: Array<{ name: string }>;
+    };
+    expect(body.options.map((option) => option.name)).toEqual([
+      "auto_unmute_seconds",
+      "delay_min_seconds",
+      "delay_max_seconds",
+      "time_button_label",
+      "xcard_button_label",
+    ]);
   });
 });
 
@@ -276,6 +291,49 @@ describe("configuration", () => {
     expect(autoUnmuteSeconds("8")).toBe(8);
     expect(autoUnmuteSeconds("999")).toBe(MAX_AUTO_UNMUTE_SECONDS);
     expect(autoUnmuteSeconds("invalid")).toBe(DEFAULT_AUTO_UNMUTE_SECONDS);
+  });
+
+  it("embeds validated settings in the X-card custom ID", () => {
+    const settings = xCardSettings("5", 0, 3, 7);
+    expect(settings).toEqual({
+      autoUnmuteSeconds: 0,
+      delayMinSeconds: 3,
+      delayMaxSeconds: 7,
+    });
+    expect(xCardSettings("5", 5, 8, 7)).toBeNull();
+    expect(xCardCustomId(settings!)).toBe("xcard:activate:0:3:7");
+    expect(settingsFromXCardCustomId("xcard:activate:0:3:7")).toEqual(settings);
+    expect(settingsFromXCardCustomId("xcard:activate", "8")).toEqual({
+      autoUnmuteSeconds: 8,
+      delayMinSeconds: 5,
+      delayMaxSeconds: 10,
+    });
+  });
+
+  it("uses custom button labels and settings on a newly installed card", () => {
+    const payload = safetyCardPayload({
+      xCardCustomId: "xcard:activate:0:3:7",
+      timeButtonLabel: "ちょっと待って",
+      xCardButtonLabel: "ストップ",
+      settingsSummary: "設定",
+    }) as {
+      embeds: Array<{ fields: Array<{ value: string }> }>;
+      components: Array<{
+        components: Array<{ custom_id: string; label: string }>;
+      }>;
+    };
+    expect(payload.components[0]?.components).toMatchObject([
+      { custom_id: "time:choose", label: "ちょっと待って" },
+      { custom_id: "xcard:activate:0:3:7", label: "ストップ" },
+    ]);
+    expect(payload.embeds[0]?.fields[0]?.value).toBe("設定");
+  });
+
+  it("mentions only current VC participants", () => {
+    expect(participantMentionPayload(["123", "456"])).toEqual({
+      content: "<@123> <@456>",
+      allowed_mentions: { parse: [], users: ["123", "456"] },
+    });
   });
 
   it("creates persistent Time and X-card buttons", () => {
