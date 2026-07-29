@@ -61,6 +61,15 @@ export const MESSAGES = {
   xCardFailed:
     "Xカードの処理に失敗しました。管理者に連絡してください。",
   setupSucceeded: "セーフティカードを設置しました。",
+  setupSettingsInvalid:
+    "設定値が不正です。ランダム遅延は0〜20秒で、最短を最長以下にしてください。自動解除は0〜10秒です。",
+  cardSettingsField: "カード設定",
+  cardSettingsSummary: (
+    autoUnmuteSeconds: number,
+    delayMinSeconds: number,
+    delayMaxSeconds: number,
+  ) =>
+    `自動解除: ${autoUnmuteSeconds === 0 ? "なし" : `${autoUnmuteSeconds}秒`} / ランダム遅延: ${delayMinSeconds}〜${delayMaxSeconds}秒`,
   setupFailed: (detail: string) =>
     `カードを設置できませんでした。\n${detail}`,
   timePostSucceeded:
