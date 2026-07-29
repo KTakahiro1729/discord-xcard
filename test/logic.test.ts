@@ -169,15 +169,39 @@ describe("command registration", () => {
 describe("Discord message failures", () => {
   it("preserves the HTTP status and Discord error code", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ code: 50013, message: "Missing Permissions" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          code: 50035,
+          message: "Invalid Form Body",
+          errors: {
+            components: {
+              0: {
+                components: {
+                  1: {
+                    emoji: {
+                      name: { _errors: [{ code: "BUTTON_COMPONENT_INVALID_EMOJI" }] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
 
     await expect(
       sendChannelMessage("token", "channel", { content: "test" }),
-    ).resolves.toEqual({ ok: false, status: 403, code: 50013 });
+    ).resolves.toEqual({
+      ok: false,
+      status: 400,
+      code: 50035,
+      errorPath: "components.0.components.1.emoji.name",
+    });
   });
 
   it("gives actionable messages for permission, token, and service failures", () => {
@@ -249,7 +273,11 @@ describe("configuration", () => {
     const response = safetyCardMessage() as {
       data: {
         components: Array<{
-          components: Array<{ custom_id: string; style: number }>;
+          components: Array<{
+            custom_id: string;
+            style: number;
+            emoji?: { name: string };
+          }>;
         }>;
       };
     };
@@ -261,6 +289,7 @@ describe("configuration", () => {
       custom_id: "xcard:activate",
       style: 4,
     });
+    expect(response.data.components[0]?.components[1]?.emoji).toBeUndefined();
   });
 
   it("offers the configured anonymous Time categories", async () => {
